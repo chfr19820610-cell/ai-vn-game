@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Minimal VN – v2</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #111; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script src="https://unpkg.com/kaboom@2000.2.1/dist/kaboom.js"></script>
+<script>
+kaboom({
+  width: 800,
+  height: 600,
+  background: [20, 20, 40],
+  crisp: true,
+});
+
+const npcData = {
+  "npc1": {
+    name: "Elder Kael",
+    color: [220, 120, 80],
+    labelColor: [255, 180, 100],
+    x: 150,
+    dialogues: [
+      "Greetings, traveler. The shrine has been corrupted by dark forces.",
+      "An ancient seal was broken three moons ago. Evil stirs in the east.",
+      "Only a pure-hearted soul can restore balance. Will you help us?",
+    ]
+  },
+  "npc2": {
+    name: "Captain Mira",
+    color: [80, 120, 220],
+    labelColor: [140, 180, 255],
+    x: 400,
+    dialogues: [
+      "Hail! I lead the village guard. We're stretched thin these days.",
+      "Bandits from the northern pass have been raiding our supply lines.",
+      "If you're heading north, watch your back — and take this map.",
+    ]
+  },
+  "npc3": {
+    name: "Luna the Mystic",
+    color: [150, 80, 200],
+    labelColor: [200, 160, 255],
+    x: 650,
+    dialogues: [
+      "Ah… a new presence. The stars whisper your arrival.",
+      "I have foreseen a great convergence. You stand at its center.",
+      "Take this charm. It will glow when destiny calls. Trust the light.",
+    ]
+  },
+};
+
+const dialIndex = {};
+
+scene("game", () => {
+  // --- NPCs ---
+  for (const [tag, npc] of Object.entries(npcData)) {
+    dialIndex[tag] = 0;
+
+    // Body
+    add([
+      rect(80, 120),
+      color(npc.color[0], npc.color[1], npc.color[2]),
+      pos(npc.x - 40, 200),
+      area(),
+      tag,
+    ]);
+
+    // Name
+    add([
+      text(npc.name, { size: 15 }),
+      color(npc.labelColor[0], npc.labelColor[1], npc.labelColor[2]),
+      pos(npc.x, 175),
+      origin("center"),
+    ]);
+  }
+
+  // --- Dialogue box ---
+  add([
+    rect(width() - 60, 110),
+    color(0, 0, 0, 200),
+    pos(30, height() - 150),
+    outline(2, rgb(255, 255, 255)),
+  ]);
+
+  const dlg = add([
+    text("Click an NPC to speak with them.", { size: 20 }),
+    color(255, 255, 255),
+    pos(50, height() - 140),
+    { width: width() - 100 },
+  ]);
+
+  // --- Speaker name label ---
+  const speakerLabel = add([
+    text("", { size: 16 }),
+    color(200, 200, 200),
+    pos(50, height() - 165),
+  ]);
+
+  // --- NPC click handlers ---
+  for (const tag of Object.keys(npcData)) {
+    onClick(tag, () => {
+      const npc = npcData[tag];
+      const idx = dialIndex[tag];
+      if (idx >= npc.dialogues.length) {
+        dlg.text = "They have nothing more to say.";
+        speakerLabel.text = "";
+        return;
+      }
+      dlg.text = npc.dialogues[idx];
+      speakerLabel.text = npc.name + ":";
+      speakerLabel.color = rgb(npc.labelColor[0], npc.labelColor[1], npc.labelColor[2]);
+      dialIndex[tag] = idx + 1;
+    });
+  }
+});
+
+go("game");
+</script>
+</body>
+</html>
