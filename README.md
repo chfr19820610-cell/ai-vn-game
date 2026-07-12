@@ -1,5 +1,7 @@
 # AI Visual Novel Game
 
+[![Deploy to GitHub Pages](https://github.com/chfr19820610-cell/ai-vn-game/actions/workflows/deploy.yml/badge.svg)](https://github.com/chfr19820610-cell/ai-vn-game/actions/workflows/deploy.yml)
+
 A minimal interactive visual novel built with Kaboom.js. Click on NPCs to talk to them in a fantasy village setting.
 
 ## Play
