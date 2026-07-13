@@ -488,7 +488,7 @@ var npcData = [
           { speaker: "narrator", text: "木门被轻轻推开。一个银发的少女站在门口，逆光中看不清表情。她手上端着一碗冒着热气的汤。" },
           { speaker: "lyra", text: "你醒了。感觉怎么样？", effects: [{ action: "set", var: "met_lyra", value: true }] },
           { speaker: "lyra", text: "你在林子边上晕的。村长扛你回来的。躺了三天了。" },
-          { speaker: "lyra", text: "她把汤放在床边的木桌上，退后两步靠在门框上。似乎不打算靠近。但也没有离开的意思。\n\n「衣服我换的。别想歪。村里没人敢碰个浑身是血的外人。」" },
+          { speaker: "lyra", text: "她把汤放在床边的木桌上，退后两步靠在门框上。好像不想过来。但也没有离开的意思。\n\n「衣服我换的。别想歪。村里没人敢碰个浑身是血的外人。」" },
           { speaker: "lyra", text: "我知道你一堆想问的。先告诉我。你怎么到这儿来的？走着走着就到了，还是……听见了什么？" }
         ],
         choices: [
@@ -565,7 +565,7 @@ var npcData = [
       // Round 0: Square narration + Kael intro → first choice (accept quest)
       {
         lines: [
-          { speaker: "narrator", text: "广场中央有一棵巨大的古树，树冠几乎遮蔽了整个广场。\n树下站着一位白发老人，他正仰头望着树梢，仿佛在聆听什么。" },
+          { speaker: "narrator", text: "广场中间有棵老树，大得把天都遮了。\n树下站着一位白发老人，他正仰头望着树梢，像在听什么。" },
           { speaker: "elder_kael", text: "啊，来了。他转过身，看了你一会儿。我是凯尔。欢迎。", effects: [{ action: "set", var: "met_elder", value: true }] },
           { speaker: "elder_kael", text: "很少有人能走进来。去星落村的路……早就藏起来了。你身上有神社的味道。" },
           { speaker: "elder_kael", text: "他走近了几步，你能看清他脸上的皱纹。每一道都像是刻上去的年轮。他的眼睛很亮，不像一个老人该有的亮度。\n\n「这棵树，」他拍了拍古树的树干，「跟我差不多老。它记得每一个来过这儿的人。今天早上，它跟我说有人要来。」" },
@@ -603,7 +603,7 @@ var npcData = [
       {
         lines: [
           { speaker: "elder_kael", text: "好。凯尔眼里亮了一下。六十年前，七个人一起封的。现在……裂了。它在找人补上。你来了。", effects: [{ action: "set", var: "kael_trusts_player", value: true }, { action: "add", var: "narrative_tension", value: 1 }] },
-          { speaker: "elder_kael", text: "他伸手按住你的肩膀。老人的手瘦削却有力。\n\n「我年轻时也像你这样。听见有人要帮忙，二话不说就去。那是我最好的地方，也是最要命的。」\n\n他停了一下，眼神暗了暗。\n\n「因为急着帮忙的人……最容易被人当刀使。别让自己变成那样。」", effects: [{ action: "set", var: "kael_gave_warning", value: true }, { action: "add", var: "affection_elder", value: 3 }] }
+          { speaker: "elder_kael", text: "他伸手按住你的肩膀。老人的手瘦削却有力。\n\n「我年轻时也像你这样。听见有人要帮忙，没多想就去了。那是我最好的地方，也是最要命的。」\n\n他停了一下，眼神暗了暗。\n\n「因为急着帮忙的人……最容易被人当刀使。别让自己变成那样。」", effects: [{ action: "set", var: "kael_gave_warning", value: true }, { action: "add", var: "affection_elder", value: 3 }] }
         ],
         nextRound: 4
       },
@@ -665,7 +665,7 @@ var npcData = [
       // Round 7: "ask about Lyra"
       {
         lines: [
-          { speaker: "lyra", text: "当然。她难得地露出一丝笑容。等你三年了，不差这一会儿。", effects: [{ action: "set", var: "lyra_will_accompany", value: true }, { action: "set", var: "next_destination", value: "blacksmith" }] },
+          { speaker: "lyra", text: "当然。她嘴角动了一下。算笑了。等你三年了，不差这一会儿。", effects: [{ action: "set", var: "lyra_will_accompany", value: true }, { action: "set", var: "next_destination", value: "blacksmith" }] },
           { speaker: "lyra", text: "她走到你身边，声音低得只有你能听见。\n\n「三年前我一人过的桥。」手指不自觉地攥紧了袖口。「差点没回来。这次。两个人走，应该好点。」\n\n没看你的眼睛。但你看见了她攥紧的指节。", effects: [{ action: "set", var: "lyra_admitted_past", value: true }, { action: "add", var: "affection_lyra", value: 3 }] }
         ],
         isFinal: true
@@ -741,7 +741,7 @@ var npcData = [
       // Round 3: "none" branch
       {
         lines: [
-          { speaker: "marcus", text: "他一愣，然后放声大笑。哈哈哈！有种！笑完脸一收，嗓门压低。听着，小子。我爹就是空手去的。不是勇敢。是蠢。" },
+          { speaker: "marcus", text: "他一愣，然后放声大笑。哈哈哈！有种！笑完脸一收，嗓门压低。听着，小子。我爹就是空手去的。那不是勇敢。蠢。" },
           { speaker: "marcus", text: "转身在架子上翻了翻，掏出个小布袋。\n\n「拿着。」塞你手里。三颗发光的石子儿。「神社护符的碴子。不值钱。暗影近了会烫手。比空手强。」\n\n不看你，又抄起锤子。\n\n「……走吧。趁我还没反悔。」", effects: [{ action: "set", var: "has_lantern", value: true }, { action: "set", var: "marcus_gave_charm", value: true }, { action: "add", var: "affection_marcus", value: 4 }] }
         ],
         nextRound: 4
