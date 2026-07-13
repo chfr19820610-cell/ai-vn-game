@@ -54,9 +54,51 @@
   <!-- Kaboom canvas inserted here -->
   <div id="overlay"></div>
 </div>
+<!-- Headless compatibility: polyfill requestAnimationFrame BEFORE Kaboom loads.
+     Kaboom captures window.requestAnimationFrame at init time; without this,
+     its internal render loop never fires in headless Playwright. -->
+<script>
+(function() {
+  var isHeadless = typeof navigator !== 'undefined' && navigator.webdriver === true;
+  if (!isHeadless) isHeadless = !!(window.__HEADLESS_MODE);
+  if (isHeadless) {
+    console.log('[v2-story] headless pre-init: polyfilling requestAnimationFrame');
+    var rafFallbackMs = 16;
+    window.requestAnimationFrame = function(cb) {
+      return setTimeout(function() { cb(Date.now()); }, rafFallbackMs);
+    };
+    window.cancelAnimationFrame = function(id) { clearTimeout(id); };
+    window.__HEADLESS_PRE_PATCH = true;
+  }
+})();
+</script>
 <script src="https://unpkg.com/kaboom@2000.2.1/dist/kaboom.js"></script>
 <script>
 kaboom({ global: true, width: 800, height: 600, background: [15,15,35] });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HEADLESS COMPATIBILITY: override Kaboom's loop() with setInterval
+// Kaboom v2000 exposes loop() as a global. In headless, rAF-based loop()
+// still has issues — replace with setInterval for the typewriter.
+// ═══════════════════════════════════════════════════════════════════════════
+(function() {
+  if (window.__HEADLESS_PRE_PATCH) {
+    console.log('[v2-story] headless post-init: replacing loop() with setInterval');
+    var _loopHandles = {};
+    var _loopSeq = 0;
+    window.loop = function(intervalSec, cb) {
+      var ms = Math.max(1, Math.round(intervalSec * 1000));
+      var id = ++_loopSeq;
+      var handle = setInterval(cb, ms);
+      _loopHandles[id] = handle;
+      return { cancel: function() { clearInterval(_loopHandles[id]); delete _loopHandles[id]; } };
+    };
+    window.__HEADLESS_PATCH_ACTIVE = true;
+    console.log('[v2-story] headless patches active (rAF pre-init + loop post-init)');
+  } else {
+    console.log('[v2-story] headed mode, no patches needed');
+  }
+})();
 
 // Fix: move canvas into #game-wrapper so overlay and canvas share the same positioned parent
 // Kaboom appends canvas to <body> by default, which causes overlay drift in flex layouts
@@ -160,58 +202,62 @@ function ovChoice(id, x, y, w, html, size, textColor, bgColor, outlineColor) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Click Shim — forward DOM overlay clicks to Kaboom canvas
-// Overlay elements (.ov-text, .ov-choice) have pointer-events:auto and block
-// clicks from reaching the canvas where Kaboom's onClick handlers live.
-// This shim forwards mousedown/click to the canvas AND adds DOM fallbacks.
+// Playwright Click Compatibility Fix
 // ═══════════════════════════════════════════════════════════════════════════
 (function() {
   var canvas = document.querySelector('canvas');
   if (!canvas) return;
-  console.log('[click-shim] installing');
+  console.log('[v2-story] canvas found, installing click shim');
 
-  // Dispatch a synthetic MouseEvent on the canvas
-  function fireCanvas(type, src) {
-    canvas.dispatchEvent(new MouseEvent(type, {
-      bubbles: true, cancelable: true, view: window,
-      button: (src && src.button) || 0,
-      buttons: (src && src.buttons) || (type === 'mousedown' ? 1 : 0),
-      clientX: (src && src.clientX) || 0,
-      clientY: (src && src.clientY) || 0,
-      screenX: (src && src.screenX) || 0,
-      screenY: (src && src.screenY) || 0
+  function synthMouse(type, src) {
+    return new MouseEvent(type, {
+      button: src.button, buttons: src.buttons,
+      clientX: src.clientX, clientY: src.clientY,
+      offsetX: src.offsetX, offsetY: src.offsetY,
+      screenX: src.screenX, screenY: src.screenY,
+      movementX: 0, movementY: 0,
+      bubbles: true, cancelable: true
+    });
+  }
+
+  canvas.addEventListener('mousedown', function(e) {
+    canvas.dispatchEvent(synthMouse('mousemove', e));
+  }, true);
+
+  canvas.addEventListener('pointerdown', function(e) {
+    canvas.dispatchEvent(new PointerEvent('pointermove', {
+      pointerId: e.pointerId, pointerType: e.pointerType,
+      clientX: e.clientX, clientY: e.clientY,
+      bubbles: true, cancelable: true
     }));
-  }
+  }, true);
 
-  // Forward clicks from overlay to canvas (so Kaboom onClick works on NPCs)
-  var overlay = document.getElementById('overlay');
-  if (overlay) {
-    overlay.addEventListener('click', function(e) {
-      var el = e.target;
-      // If the click is on a .ov-choice, extract choice index and fire
-      if (el.classList.contains('ov-choice')) {
-        var choiceIdx = parseInt((el.id || '').replace('ov-choice-txt-', ''), 10);
-        if (!isNaN(choiceIdx) && window.__clickChoice) {
-          window.__clickChoice(choiceIdx);
-        }
-        return;
-      }
-      // If the click is on an NPC name label, extract NPC index and fire
-      if (el.id && el.id.indexOf('ov-npc-name-') === 0) {
-        var npcIdx = parseInt(el.id.replace('ov-npc-name-', ''), 10);
-        if (!isNaN(npcIdx) && window.__clickNpc) {
-          window.__clickNpc(npcIdx);
-        }
-        return;
-      }
-      // Forward to canvas for Kaboom hit detection (NPC body rects, buttons)
-      fireCanvas('mousedown', e);
-      fireCanvas('mouseup', e);
-      fireCanvas('click', e);
-    }, true);
-  }
+  canvas.addEventListener('mouseup', function(e) {
+    var pressed = (typeof isMousePressed === 'function') && isMousePressed();
+    if (pressed) {
+      e.stopImmediatePropagation();
+      requestAnimationFrame(function() {
+        canvas.dispatchEvent(synthMouse('mouseup', e));
+      });
+    }
+  }, true);
 
-  console.log('[click-shim] installed');
+  canvas.addEventListener('pointerup', function(e) {
+    var pressed = (typeof isMousePressed === 'function') && isMousePressed();
+    if (pressed) {
+      e.stopImmediatePropagation();
+      requestAnimationFrame(function() {
+        canvas.dispatchEvent(new PointerEvent('pointerup', {
+          pointerId: e.pointerId, pointerType: e.pointerType,
+          clientX: e.clientX, clientY: e.clientY,
+          button: e.button, buttons: e.buttons,
+          bubbles: true, cancelable: true
+        }));
+      });
+    }
+  }, true);
+
+  console.log('[v2-story] click shim installed');
 })();
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -826,8 +872,15 @@ function currentChoices() {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPEWRITER — now updates DOM overlay instead of Kaboom text
+//
+// Headless-safe design (3 paths):
+//   1. __skipTypewriter === true  →  show full text immediately (no animation)
+//   2. Headless detected          →  setTimeout() recursion (no Kaboom loop())
+//   3. Headed (normal)            →  Kaboom loop() for smooth animation
 // ═══════════════════════════════════════════════════════════════════════════
 var _typeIdCounter = 0;
+var _TYPEWRITER_SPEED = 0.04; // seconds per character (40ms) — headed mode
+var _TYPEWRITER_SPEED_HEADLESS = 0.008; // seconds per character (8ms) — headless: faster to compensate for timer throttling
 
 function typeText(lines, onDone) {
   _typeIdCounter++;
@@ -849,7 +902,61 @@ function typeText(lines, onDone) {
     }
   }
 
-  loop(0.04, function() {
+  // ── PATH 1: Skip typewriter entirely (for testing / fast-forward) ──
+  if (window.__skipTypewriter) {
+    console.log('[typewriter] __skipTypewriter=true — showing full text immediately');
+    display = lines.join('\n');
+    ovHtml('dialog-text', display.replace(/\n/g, '<br>'));
+    state.typeActive = 0;
+    state.typing = false;
+    if (onDone) onDone();
+    return;
+  }
+
+  // ── PATH 2: Headless setTimeout — no Kaboom loop() dependency ──
+  var isHeadless = window.__HEADLESS_PRE_PATCH || false;
+  if (isHeadless) {
+    console.log('[typewriter] headless mode — using setTimeout ticker (no Kaboom loop)');
+
+    window.__twDebug = { ticks: 0, lineIdx: 0, charIdx: 0, lastErr: null };
+
+    function tick() {
+      window.__twDebug.ticks++;
+      window.__twDebug.lineIdx = lineIdx;
+      window.__twDebug.charIdx = charIdx;
+      try {
+        if (state.typeActive !== myId) { console.log('[tw] state.typeActive mismatch:', state.typeActive, 'vs', myId); return; }
+        if (lineIdx >= lines.length) {
+          console.log('[tw] DONE — all lines typed');
+          state.typeActive = 0;
+          state.typing = false;
+          ovHtml('dialog-text', display.replace(/\n/g, '<br>'));
+          if (onDone) onDone();
+          return;
+        }
+        var cur = lines[lineIdx];
+        if (charIdx < cur.length) {
+          display += cur[charIdx];
+          charIdx++;
+          ovHtml('dialog-text', display.replace(/\n/g, '<br>') + '<span style="color:#ccc">▌</span>');
+        } else {
+          if (lineIdx < lines.length - 1) display += "\n";
+          lineIdx++;
+          charIdx = 0;
+          ovHtml('dialog-text', display.replace(/\n/g, '<br>') + '<span style="color:#ccc">▌</span>');
+        }
+      } catch(e) {
+        window.__twDebug.lastErr = e.message;
+        console.error('[tw] tick error:', e.message);
+      }
+      setTimeout(tick, Math.round(_TYPEWRITER_SPEED_HEADLESS * 1000));
+    }
+    setTimeout(tick, 0);
+    return;
+  }
+
+  // ── PATH 3: Standard Kaboom loop() for headed environments ──
+  loop(_TYPEWRITER_SPEED, function() {
     if (state.typeActive !== myId) return;
     if (lineIdx >= lines.length) {
       state.typeActive = 0;
@@ -881,8 +988,8 @@ var _choiceRects = []; // Kaboom rect game objects
 
 function showChoices(choices) {
   if (state.showChoices) return;
-  state.showChoices = true;
   clearAllChoices();
+  state.showChoices = true;
 
   var count = choices.length;
   var boxW = count === 3 ? 230 : 340;
@@ -894,7 +1001,7 @@ function showChoices(choices) {
     var cx = startX + i * (boxW + 10);
     // Kaboom rect for hit detection
     var rectId = 'choice-rect-' + i;
-    var rectGo = add([
+    var rectObj = add([
       rect(boxW, 42, { radius: 8 }),
       color(50, 60, 100),
       pos(cx, 525),
@@ -902,7 +1009,7 @@ function showChoices(choices) {
       outline(2, rgb(150, 180, 255)),
       rectId
     ]);
-    _choiceRects.push({ id: rectId, go: rectGo, idx: i });
+    _choiceRects.push({ id: rectId, go: rectObj, idx: i });
 
     // DOM text overlay for choice text
     var html = '<b>' + labels[i] + '.</b> ' + choices[i].text;

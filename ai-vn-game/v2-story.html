@@ -58,6 +58,17 @@
 <script>
 kaboom({ global: true, width: 800, height: 600, background: [15,15,35] });
 
+// Fix: move canvas into #game-wrapper so overlay and canvas share the same positioned parent
+// Kaboom appends canvas to <body> by default, which causes overlay drift in flex layouts
+(function() {
+  var canvas = document.querySelector('canvas');
+  var wrapper = document.getElementById('game-wrapper');
+  if (canvas && wrapper) {
+    wrapper.insertBefore(canvas, wrapper.firstChild);
+    console.log('[fix] canvas moved into #game-wrapper');
+  }
+})();
+
 // ═══════════════════════════════════════════════════════════════════════════
 // DOM OVERLAY SYSTEM — for Chinese text rendering
 // Kaboom v2000 bitmap fonts don't support CJK, so we use DOM overlay

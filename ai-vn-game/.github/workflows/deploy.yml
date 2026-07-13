@@ -125,11 +125,17 @@ jobs:
           # 复制游戏文件
           echo "=== 复制部署文件 ==="
           cp -v index.html _deploy/
-          cp -v ai-vn-game/v2-story-natural.html _deploy/ 2>/dev/null || true
-          cp -v ai-vn-game/v2-story-natural-v2.html _deploy/ 2>/dev/null || true
+          cp -v v2-story-natural.html _deploy/ 2>/dev/null || true
+          cp -v v2-story-natural-v2.html _deploy/ 2>/dev/null || true
+          cp -v v2-story.html _deploy/ 2>/dev/null || true
+          cp -v v2-full.html _deploy/ 2>/dev/null || true
+          cp -v v3.html _deploy/ 2>/dev/null || true
           cp -v analytics-dashboard.html _deploy/ 2>/dev/null || true
           cp -v itchio-store.html _deploy/ 2>/dev/null || true
           cp -v README.md _deploy/ 2>/dev/null || true
+          cp -v manifest.json _deploy/ 2>/dev/null || true
+          cp -v sw.js _deploy/ 2>/dev/null || true
+          cp -v offline.html _deploy/ 2>/dev/null || true
           cp -rv src _deploy/
           cp -rv assets _deploy/
           cp -rv locales _deploy/ 2>/dev/null || true

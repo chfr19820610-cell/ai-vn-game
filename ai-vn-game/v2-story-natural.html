@@ -417,7 +417,7 @@ function applyEffects(effects) {
   if (!effects || !Array.isArray(effects)) return;
   for (var i = 0; i < effects.length; i++) {
     var eff = effects[i];
-    if (!eff || !eff.var) continue;
+    if (!eff) continue;
     switch (eff.action) {
       case "set":
         vars[eff.var] = eff.value;
@@ -427,6 +427,16 @@ function applyEffects(effects) {
         break;
       case "toggle":
         vars[eff.var] = !vars[eff.var];
+        break;
+      case "addItem":
+        addToInventory({
+          name: eff.name || eff.var,
+          icon: eff.icon || "📦",
+          desc: eff.desc || "",
+          source: eff.source || "",
+          id: eff.var
+        });
+        if (eff.var) vars[eff.var] = true;
         break;
     }
   }
@@ -931,6 +941,15 @@ function playRound(idx, round) {
       }
 
       clearSpeakerName();
+
+      // ── JOURNAL: NPC conversation complete (isFinal path) ──
+      window.addToJournal({
+        title: '✅ 与' + npcData[idx].name + '对话完成',
+        detail: npcData[idx].title + ' — 获得了指引',
+        time: new Date().toLocaleTimeString(),
+        done: true
+      });
+
       checkAllDone();
     } else if (round.nextRound !== undefined) {
       state.round[idx] = round.nextRound;
@@ -955,6 +974,15 @@ function playRound(idx, round) {
         window._dialogTxt.text = "（对话结束）序幕完成 ▍";
       }
       clearSpeakerName();
+
+      // ── JOURNAL: NPC conversation complete (fallback path) ──
+      window.addToJournal({
+        title: '✅ 与' + npcData[idx].name + '对话完成',
+        detail: npcData[idx].title + ' — 获得了指引',
+        time: new Date().toLocaleTimeString(),
+        done: true
+      });
+
       checkAllDone();
     }
   });
@@ -985,6 +1013,16 @@ function selectChoice(idx, choiceN) {
   applyEffects(choice.effects || []);
 
   vars["_last_choice_npc" + idx] = choice.text;
+
+  // ── JOURNAL: record major choice ──
+  var npcName = npcData[idx].name;
+  var detail = choice.text.length > 30 ? choice.text.substring(0, 28) + '…' : choice.text;
+  window.addToJournal({
+    title: '💬 与' + npcName + '的对话',
+    detail: '选择了: 「' + detail + '」',
+    time: new Date().toLocaleTimeString(),
+    done: true
+  });
 
   clearAllChoices();
 
