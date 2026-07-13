@@ -803,6 +803,22 @@ function typeText(txtObj, lines, onDone) {
 
   var lineIdx = 0, charIdx = 0, display = "";
 
+  // Store skip callback so onClick can trigger instant completion
+  window.__skipTypewriter = function() {
+    if (state.typeActive !== myId) return;
+    // Flush all remaining lines instantly
+    while (lineIdx < lines.length) {
+      var cur = lines[lineIdx];
+      display += cur;
+      if (lineIdx < lines.length - 1) display += "\n";
+      lineIdx++;
+    }
+    state.typeActive = 0;
+    state.typing = false;
+    txtObj.text = display;
+    if (onDone) onDone();
+  };
+
   loop(0.04, function() {
     if (state.typeActive !== myId) return;
     if (lineIdx >= lines.length) {
@@ -1125,7 +1141,8 @@ function checkAllDone() {
         rect(500, 240, { radius: 12 }),
         color(0, 0, 0), opacity(0.92),
         pos(150, 180),
-        outline(3, rgb(255, 215, 0))
+        outline(3, rgb(255, 215, 0)),
+        "completion-panel"
       ]);
       // DOM overlay for Chinese completion text
       ovSet('done-title', width()/2, 230, '🌟 序幕完成 🌟', 36, 'rgb(255,215,0)', { center: true, title: true });
@@ -1258,9 +1275,18 @@ scene("main", function() {
   });
   onKeyPress("i", function() { toggleInventory(); });
   onKeyPress("j", function() { toggleJournal(); });
+  onKeyPress("enter", function() {
+    if (state.typing && window.__skipTypewriter) window.__skipTypewriter();
+  });
+  onKeyPress("space", function() {
+    if (state.typing && window.__skipTypewriter) window.__skipTypewriter();
+  });
 
   onClick(function() {
-    // Click anywhere to skip/advance typing (skip feature placeholder)
+    // Click anywhere to skip/advance typing
+    if (state.typing && window.__skipTypewriter) {
+      window.__skipTypewriter();
+    }
   });
 });
 
