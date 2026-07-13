@@ -544,7 +544,7 @@ var npcData = [
       // Round 4: Transition to square
       {
         lines: [
-          { speaker: "lyra", text: "跟我来。村长在广场等你。记住了——别骗他。他看得出来。", effects: [{ action: "set", var: "heading_to_square", value: true }] }
+          { speaker: "lyra", text: "跟我来。村长在广场等你。别骗他——骗不过的。", effects: [{ action: "set", var: "heading_to_square", value: true }] }
         ],
         isFinal: true
       }
@@ -603,7 +603,7 @@ var npcData = [
       {
         lines: [
           { speaker: "elder_kael", text: "好。凯尔眼里亮了一下。六十年前，七个人一起封的。现在……裂了。它在找人补上。你来了。", effects: [{ action: "set", var: "kael_trusts_player", value: true }, { action: "add", var: "narrative_tension", value: 1 }] },
-          { speaker: "elder_kael", text: "他伸手按住你的肩膀。老人的手瘦削却有力。\n\n「我年轻时也像你这样——听见有人要帮忙，二话不说就去。那是我最好的地方，也是最要命的。」\n\n他停了一下，眼神暗了暗。\n\n「因为急着帮忙的人……最容易被人当刀使。记着。」", effects: [{ action: "set", var: "kael_gave_warning", value: true }, { action: "add", var: "affection_elder", value: 3 }] }
+          { speaker: "elder_kael", text: "他伸手按住你的肩膀。老人的手瘦削却有力。\n\n「我年轻时也像你这样——听见有人要帮忙，二话不说就去。那是我最好的地方，也是最要命的。」\n\n他停了一下，眼神暗了暗。\n\n「因为急着帮忙的人……最容易被人当刀使。别让自己变成那样。」", effects: [{ action: "set", var: "kael_gave_warning", value: true }, { action: "add", var: "affection_elder", value: 3 }] }
         ],
         nextRound: 4
       },
@@ -749,7 +749,7 @@ var npcData = [
       // Round 4: Warning + departure
       {
         lines: [
-          { speaker: "marcus", text: "……算了。背过身去，嗓门低下来。不管你拿的啥，记住：暗影不打你身子。往你心里钻。让你看见你最怕的。", effects: [{ action: "set", var: "marcus_warning_given", value: true }, { action: "add", var: "narrative_tension", value: 2 }] },
+          { speaker: "marcus", text: "……算了。背过身去，嗓门低下来。不管你拿的啥，听好了——暗影不打你身子。往你心里钻。让你看见你最怕的。", effects: [{ action: "set", var: "marcus_warning_given", value: true }, { action: "add", var: "narrative_tension", value: 2 }] },
           { speaker: "marcus", text: "行了，别磨叽。神社在等你——我感觉得到。天越黑，它越凶。趁现在走，天黑前能到。", effects: [{ action: "set", var: "ready_to_depart", value: true }] }
         ],
         isFinal: true
