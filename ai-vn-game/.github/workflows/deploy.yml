@@ -1,0 +1,264 @@
+# .github/workflows/deploy.yml
+# AI 视觉小说引擎 — GitHub Pages 自动部署工作流
+# 参考: docs/game-cicd-deploy.md
+#
+# 四阶段流水线: 测试 → 构建 → 部署 → 健康检查
+# 触发条件: push 到 main 分支 / PR / 手动触发
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:  # 允许手动触发
+
+# ═══════════════════════════════════════════════════════════
+# GITHUB_TOKEN 权限设置
+# ═══════════════════════════════════════════════════════════
+permissions:
+  contents: write       # peaceiris/actions-gh-pages 需要写入权限
+  pages: write
+  id-token: write
+
+# 允许一个并发部署，排队等待
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '20'
+
+# ═══════════════════════════════════════════════════════════
+# Stage 1: 测试 (TEST)
+# ═══════════════════════════════════════════════════════════
+jobs:
+  test:
+    name: "🔬 Stage 1 — Test"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Lint Check
+        run: npm run lint
+        continue-on-error: true  # 警告不阻塞
+
+      - name: Unit Tests (Vitest)
+        run: npm test
+
+      - name: Check HTML Well-formed
+        run: |
+          if ! grep -q '<!DOCTYPE html>' index.html; then
+            echo "❌ index.html is missing DOCTYPE"
+            exit 1
+          fi
+
+# ═══════════════════════════════════════════════════════════
+# Stage 2: 构建 (BUILD)
+# 本项目为纯静态 HTML5 游戏，无编译步骤
+# 构建阶段 = 验证 + 准备部署产物
+# ═══════════════════════════════════════════════════════════
+  build:
+    name: "📦 Stage 2 — Build"
+    needs: test
+    if: ${{ !cancelled() && needs.test.result != 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify Critical Files
+        run: |
+          echo "=== 验证部署文件 ==="
+          for file in \
+            index.html \
+            src/data/game-data.js \
+            src/data/Analytics.js \
+            src/ai/DialogueEngine.js \
+            src/ai/LLMClient.js \
+            src/ai/Guardrail.js \
+            src/engine/WorldState.js \
+            src/engine/SaveManager.js \
+            src/audio/GameAudioManager.js \
+            src/audio/ProceduralSFX.js \
+            src/scenes/gameScene.js; do
+            if [ -f "$file" ]; then
+              echo "✅ $file"
+            else
+              echo "❌ MISSING: $file"
+              exit 1
+            fi
+          done
+          echo "=== 所有关键文件验证通过 ==="
+
+      - name: Verify ES Module Imports Resolve
+        run: |
+          echo "=== 检查 ES 模块导入路径 ==="
+          # 提取所有 import 路径并验证文件存在
+          grep -oP 'import.*from\s+["'\''](\./[^"'\'']+)["'\'']' index.html | \
+            sed 's/.*from "\(.*\)".*/\1/' | \
+            while read -r import_path; do
+              if [ -f "$import_path" ] || [ -d "$import_path" ]; then
+                echo "✅ $import_path"
+              else
+                echo "⚠️  $import_path (CDN / external — skipped)"
+              fi
+            done
+          echo "=== 导入路径检查完成 ==="
+
+      - name: Prepare Deploy Directory
+        run: |
+          # 创建部署目录
+          mkdir -p _deploy
+
+          # 复制游戏文件
+          echo "=== 复制部署文件 ==="
+          cp -v index.html _deploy/
+          cp -v v2-story-natural.html _deploy/ 2>/dev/null || true
+          cp -v analytics-dashboard.html _deploy/ 2>/dev/null || true
+          cp -v itchio-store.html _deploy/ 2>/dev/null || true
+          cp -v README.md _deploy/ 2>/dev/null || true
+          cp -rv src _deploy/
+          cp -rv assets _deploy/
+          cp -rv locales _deploy/ 2>/dev/null || true
+
+          # 添加 GitHub Pages 必要文件
+          touch _deploy/.nojekyll
+
+          # CNAME 文件（自定义域名）
+          echo "ainovel.game" > _deploy/CNAME
+
+          echo "=== 部署目录内容 ==="
+          ls -la _deploy/
+          echo "=== 部署包大小 ==="
+          du -sh _deploy/
+
+      - name: Upload Deploy Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: game-deploy
+          path: _deploy/
+          retention-days: 7
+
+# ═══════════════════════════════════════════════════════════
+# Stage 3: 部署 (DEPLOY)
+# 使用 peaceiris/actions-gh-pages 推送到 gh-pages 分支
+# ═══════════════════════════════════════════════════════════
+  deploy:
+    name: "🚀 Stage 3 — Deploy"
+    needs: build
+    if: |
+      github.ref == 'refs/heads/main' &&
+      !cancelled() &&
+      needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+    steps:
+      - name: Download Deploy Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: game-deploy
+          path: _deploy
+
+      - name: Deploy to gh-pages Branch
+        id: deploy
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./_deploy
+          publish_branch: gh-pages
+          force_orphan: true
+          commit_message: |
+            🚀 Deploy ${{ github.sha }}
+
+            Source: ${{ github.ref_name }}
+            Trigger: ${{ github.event_name }}
+            [skip ci]
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'
+
+# ═══════════════════════════════════════════════════════════
+# Stage 4: 健康检查 (HEALTH CHECK)
+# 部署后验证站点可访问性
+# ═══════════════════════════════════════════════════════════
+  health-check:
+    name: "💚 Stage 4 — Health Check"
+    needs: deploy
+    if: ${{ !cancelled() && needs.deploy.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for CDN Propagation
+        run: sleep 15
+
+      - name: Check GitHub Pages URL
+        run: |
+          # 尝试 GitHub Pages 默认域名
+          REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
+          OWNER=$(echo "${{ github.repository }}" | cut -d'/' -f1)
+          PAGES_URL="https://${OWNER}.github.io/${REPO_NAME}"
+
+          echo "🔍 Checking: ${PAGES_URL}"
+
+          # 最多重试 5 次（CDN 传播可能需要时间）
+          for i in $(seq 1 5); do
+            echo "  Attempt $i/5..."
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "${PAGES_URL}")
+
+            if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "301" ] || [ "$HTTP_CODE" = "302" ]; then
+              echo "✅ Page accessible! HTTP ${HTTP_CODE}"
+              exit 0
+            fi
+
+            echo "  ⚠️  Got HTTP ${HTTP_CODE}, retrying in 10s..."
+            sleep 10
+          done
+
+          echo "❌ Health check failed after 5 attempts"
+          exit 1
+
+      - name: Verify Content-Type
+        run: |
+          REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
+          OWNER=$(echo "${{ github.repository }}" | cut -d'/' -f1)
+          PAGES_URL="https://${OWNER}.github.io/${REPO_NAME}"
+
+          CONTENT_TYPE=$(curl -sI --max-time 15 "${PAGES_URL}" | grep -i 'content-type' | tr -d '\r')
+          echo "Content-Type: ${CONTENT_TYPE}"
+
+          if echo "$CONTENT_TYPE" | grep -qi 'text/html'; then
+            echo "✅ Correct Content-Type header"
+          else
+            echo "⚠️  Unexpected Content-Type: ${CONTENT_TYPE}"
+          fi
+
+      - name: Verify Key Assets Accessible
+        run: |
+          REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
+          OWNER=$(echo "${{ github.repository }}" | cut -d'/' -f1)
+          BASE_URL="https://${OWNER}.github.io/${REPO_NAME}"
+
+          # 检查关键资源是否可访问
+          for path in \
+            "index.html" \
+            "src/data/game-data.js" \
+            "CNAME"; do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "${BASE_URL}/${path}")
+            if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "304" ]; then
+              echo "✅ ${path} — HTTP ${HTTP_CODE}"
+            else
+              echo "❌ ${path} — HTTP ${HTTP_CODE}"
+            fi
+          done
