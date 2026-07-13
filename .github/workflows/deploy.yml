@@ -1,39 +1,72 @@
+# .github/workflows/deploy.yml
+# 星落之书 — GitHub Pages 自动部署
+# 仓库结构: herness/ = 仓库根, 游戏文件在 ai-vn-game/ 子目录
+
 name: Deploy to GitHub Pages
 
 on:
-  # P0 fix: removed push trigger — only manual deploy after Playwright verification
+  push:
+    branches: [main]
+    paths:
+      - 'ai-vn-game/**'
+      - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
-# Allow only one concurrent deployment
 concurrency:
   group: "pages"
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build-and-deploy:
+    name: "📦 Build & Deploy"
+    runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
+      url: https://chfr19820610-cell.github.io/ai-vn-game/
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
+      - name: Prepare Deploy Directory
+        run: |
+          mkdir -p _deploy
+          cd ai-vn-game
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+          echo "=== 复制游戏文件 ==="
+          cp -v index.html ../_deploy/
+          cp -v v2-story-natural-v2.html ../_deploy/ 2>/dev/null || echo "⚠ v2-story-natural-v2.html not found"
+          cp -v v2-story-natural.html ../_deploy/ 2>/dev/null || echo "⚠ v2-story-natural.html not found"
+          cp -v v2-story.html ../_deploy/ 2>/dev/null || true
+          cp -v v2-full.html ../_deploy/ 2>/dev/null || true
+          cp -v v3.html ../_deploy/ 2>/dev/null || true
+          cp -v analytics-dashboard.html ../_deploy/ 2>/dev/null || true
+          cp -v itchio-store.html ../_deploy/ 2>/dev/null || true
+          cp -v offline.html ../_deploy/ 2>/dev/null || true
+          cp -v manifest.json ../_deploy/ 2>/dev/null || true
+          cp -v sw.js ../_deploy/ 2>/dev/null || true
+          cp -v README.md ../_deploy/ 2>/dev/null || true
+
+          echo "=== 复制资源目录 ==="
+          cp -rv src ../_deploy/ 2>/dev/null || true
+          cp -rv assets ../_deploy/ 2>/dev/null || true
+          cp -rv locales ../_deploy/ 2>/dev/null || true
+
+          cd ..
+          touch _deploy/.nojekyll
+          echo "=== _deploy 内容 ==="
+          ls -la _deploy/
+          echo "=== 文件数量: $(ls _deploy/*.html 2>/dev/null | wc -l) HTML ==="
+
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          # Upload entire repository (static HTML files)
-          path: '.'
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./_deploy
+          publish_branch: gh-pages
+          force_orphan: true
+          commit_message: "🚀 Deploy ${{ github.sha }} [skip ci]"
