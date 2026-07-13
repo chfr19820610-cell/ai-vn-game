@@ -126,6 +126,7 @@ jobs:
           echo "=== 复制部署文件 ==="
           cp -v index.html _deploy/
           cp -v v2-story-natural.html _deploy/ 2>/dev/null || true
+          cp -v v2-story-natural-v2.html _deploy/ 2>/dev/null || true
           cp -v analytics-dashboard.html _deploy/ 2>/dev/null || true
           cp -v itchio-store.html _deploy/ 2>/dev/null || true
           cp -v README.md _deploy/ 2>/dev/null || true
