@@ -810,7 +810,7 @@ function typeText(txtObj, lines, onDone) {
     while (lineIdx < lines.length) {
       var cur = lines[lineIdx];
       display += cur;
-      if (lineIdx < lines.length - 1) display += "\n";
+      if (lineIdx < lines.length - 1) display += "<br>";
       lineIdx++;
     }
     state.typeActive = 0;
@@ -834,7 +834,7 @@ function typeText(txtObj, lines, onDone) {
       charIdx++;
       txtObj.text = display + "▌";
     } else {
-      if (lineIdx < lines.length - 1) display += "\n";
+      if (lineIdx < lines.length - 1) display += "<br>";
       lineIdx++;
       charIdx = 0;
       txtObj.text = display + "▌";
@@ -1146,7 +1146,7 @@ function checkAllDone() {
       ]);
       // DOM overlay for Chinese completion text
       ovSet('done-title', width()/2, 230, '🌟 序幕完成 🌟', 36, 'rgb(255,215,0)', { center: true, title: true });
-      ovSet('done-subtitle', width()/2, 280, '你已获得三位守护者的指引。\n冒险才刚刚开始……', 16, 'rgb(220,220,220)', { center: true });
+      ovSet('done-subtitle', width()/2, 280, '你已获得三位守护者的指引。<br>冒险才刚刚开始……', 16, 'rgb(220,220,220)', { center: true });
       var summary = '武器: ' + (vars.weapon || '无') + ' | 好感: 莉拉' + vars.affection_lyra + ' 凯尔' + vars.affection_elder + ' 马库斯' + vars.affection_marcus;
       ovSet('done-summary', width()/2, 320, summary, 13, 'rgb(180,180,200)', { center: true });
     }, 800);
