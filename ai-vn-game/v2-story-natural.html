@@ -1,0 +1,1167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=800">
+<title>星落之夜 · 序幕 — v2 Story (Natural Dialogue)</title>
+<!-- Noto Sans SC for Chinese rendering -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a1a;
+    display: flex; justify-content: center; align-items: center;
+    height: 100vh; overflow: hidden;
+    font-family: 'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif;
+  }
+  #game-wrapper {
+    position: relative;
+    width: 800px; height: 600px;
+  }
+  canvas { display: block; border-radius: 8px; }
+  #overlay {
+    position: absolute;
+    top: 0; left: 0;
+    width: 800px; height: 600px;
+    pointer-events: none;
+    z-index: 10;
+  }
+  #overlay .ov-text {
+    position: absolute;
+    white-space: pre-wrap;
+    line-height: 1.35;
+    pointer-events: auto;
+    user-select: none;
+  }
+  #overlay .ov-center { transform: translate(-50%, -50%); }
+  #overlay .ov-speaker { font-weight: 700; }
+  #overlay .ov-choice {
+    padding: 4px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    pointer-events: auto;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #overlay .ov-title { font-weight: 700; text-shadow: 0 0 8px rgba(200,180,100,0.5); }
+</style>
+</head>
+<body>
+<div id="game-wrapper">
+  <div id="overlay"></div>
+</div>
+<script src="https://unpkg.com/kaboom@2000.2.1/dist/kaboom.js"></script>
+<script>
+kaboom({ global: true, width: 800, height: 600, background: [15,15,35] });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CJK Font Patch — Kaboom v2000 bitmap fonts don't support Chinese characters.
+// Monkey-patch Canvas fillText/strokeText to use system CJK fonts when
+// CJK characters are detected in the rendered text.
+// ═══════════════════════════════════════════════════════════════════════════
+(function() {
+  var CJK = /[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]/;
+  var CJK_FONT = "16px 'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif";
+
+  var _fillText = CanvasRenderingContext2D.prototype.fillText;
+  CanvasRenderingContext2D.prototype.fillText = function(text, x, y, maxWidth) {
+    if (typeof text === 'string' && CJK.test(text)) {
+      var saved = this.font;
+      this.font = CJK_FONT;
+      if (maxWidth !== undefined) _fillText.call(this, text, x, y, maxWidth);
+      else _fillText.call(this, text, x, y);
+      this.font = saved;
+    } else {
+      if (maxWidth !== undefined) _fillText.call(this, text, x, y, maxWidth);
+      else _fillText.call(this, text, x, y);
+    }
+  };
+
+  var _strokeText = CanvasRenderingContext2D.prototype.strokeText;
+  CanvasRenderingContext2D.prototype.strokeText = function(text, x, y, maxWidth) {
+    if (typeof text === 'string' && CJK.test(text)) {
+      var saved = this.font;
+      this.font = CJK_FONT;
+      if (maxWidth !== undefined) _strokeText.call(this, text, x, y, maxWidth);
+      else _strokeText.call(this, text, x, y);
+      this.font = saved;
+    } else {
+      if (maxWidth !== undefined) _strokeText.call(this, text, x, y, maxWidth);
+      else _strokeText.call(this, text, x, y);
+    }
+  };
+
+  console.log('[CJK patch] Canvas fillText/strokeText patched for Chinese characters');
+})();
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Playwright Click Compatibility Fix
+// ═══════════════════════════════════════════════════════════════════════════
+(function() {
+  var canvas = document.querySelector('canvas');
+  if (!canvas) return;
+  console.log('[v2-story] canvas found, installing click shim');
+
+  function synthMouse(type, src) {
+    return new MouseEvent(type, {
+      button: src.button, buttons: src.buttons,
+      clientX: src.clientX, clientY: src.clientY,
+      offsetX: src.offsetX, offsetY: src.offsetY,
+      screenX: src.screenX, screenY: src.screenY,
+      movementX: 0, movementY: 0,
+      bubbles: true, cancelable: true
+    });
+  }
+
+  canvas.addEventListener('mousedown', function(e) {
+    canvas.dispatchEvent(synthMouse('mousemove', e));
+  }, true);
+
+  canvas.addEventListener('pointerdown', function(e) {
+    canvas.dispatchEvent(new PointerEvent('pointermove', {
+      pointerId: e.pointerId, pointerType: e.pointerType,
+      clientX: e.clientX, clientY: e.clientY,
+      bubbles: true, cancelable: true
+    }));
+  }, true);
+
+  canvas.addEventListener('mouseup', function(e) {
+    var pressed = (typeof isMousePressed === 'function') && isMousePressed();
+    if (pressed) {
+      e.stopImmediatePropagation();
+      requestAnimationFrame(function() {
+        canvas.dispatchEvent(synthMouse('mouseup', e));
+      });
+    }
+  }, true);
+
+  canvas.addEventListener('pointerup', function(e) {
+    var pressed = (typeof isMousePressed === 'function') && isMousePressed();
+    if (pressed) {
+      e.stopImmediatePropagation();
+      requestAnimationFrame(function() {
+        canvas.dispatchEvent(new PointerEvent('pointerup', {
+          pointerId: e.pointerId, pointerType: e.pointerType,
+          clientX: e.clientX, clientY: e.clientY,
+          button: e.button, buttons: e.buttons,
+          bubbles: true, cancelable: true
+        }));
+      });
+    }
+  }, true);
+
+  console.log('[v2-story] click shim installed');
+})();
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DOM OVERLAY SYSTEM — for reliable Chinese text rendering
+// Kaboom canvas text depends on browser font loading; DOM overlay is more robust
+// ═══════════════════════════════════════════════════════════════════════════
+var overlay = document.getElementById('overlay');
+var _ovEls = {};
+
+function ovEl(id) {
+  if (!_ovEls[id]) {
+    var el = document.createElement('div');
+    el.className = 'ov-text';
+    el.id = 'ov-' + id;
+    overlay.appendChild(el);
+    _ovEls[id] = el;
+  }
+  return _ovEls[id];
+}
+
+function ovSet(id, x, y, html, size, color, opts) {
+  var el = ovEl(id);
+  el.style.left = x + 'px';
+  el.style.top = y + 'px';
+  el.style.fontSize = (size || 16) + 'px';
+  el.style.color = color || '#fff';
+  el.innerHTML = html;
+  if (opts && opts.center) el.classList.add('ov-center');
+  else el.classList.remove('ov-center');
+  if (opts && opts.speaker) el.classList.add('ov-speaker');
+  else el.classList.remove('ov-speaker');
+  if (opts && opts.title) el.classList.add('ov-title');
+  else el.classList.remove('ov-title');
+  if (opts && opts.width) el.style.width = opts.width + 'px';
+  el.style.display = '';
+  el.style.opacity = (opts && opts.opacity !== undefined) ? opts.opacity : '1';
+  return el;
+}
+
+function ovHide(id) {
+  var el = _ovEls[id];
+  if (el) el.style.display = 'none';
+}
+
+function ovDestroy(id) {
+  var el = _ovEls[id];
+  if (el) { el.remove(); delete _ovEls[id]; }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INVENTORY SYSTEM
+// ═══════════════════════════════════════════════════════════════════════════
+var inventory = [];
+var _inventoryOpen = false;
+
+function addToInventory(item) {
+  inventory.push(item);
+}
+
+function toggleInventory() {
+  if (_inventoryOpen) { closeInventory(); }
+  else { openInventory(); }
+}
+
+function openInventory() {
+  if (_inventoryOpen) return;
+  _inventoryOpen = true;
+  closeJournal();
+  add([rect(340, 320, { radius: 12 }), color(15, 15, 30), opacity(0.95), pos(width()/2 - 170, 140), outline(2, rgb(180, 160, 100)), "inventory-panel"]);
+  ovSet('inv-title', width()/2 - 150, 155, '🎒 背包', 20, 'rgb(255,215,100)');
+  ovSet('inv-close', width()/2 + 60, 159, '按 I 关闭', 11, 'rgb(140,140,160)');
+  if (inventory.length === 0) {
+    ovSet('inv-empty', width()/2 - 130, 240, '（空 — 与他人对话获取物品）', 14, 'rgb(140,140,160)');
+  } else {
+    for (var i = 0; i < inventory.length; i++) {
+      var item = inventory[i];
+      var iy = 195 + i * 58;
+      ovSet('inv-item-name-' + i, width()/2 - 150, iy, item.icon + ' ' + item.name, 15, '#fff');
+      ovSet('inv-item-desc-' + i, width()/2 - 150, iy + 20, item.desc, 11, 'rgb(160,160,180)');
+      if (item.source) ovSet('inv-item-src-' + i, width()/2 - 150, iy + 36, '来源: ' + item.source, 10, 'rgb(120,120,140)');
+    }
+  }
+}
+
+function closeInventory() {
+  _inventoryOpen = false;
+  destroyAll('inventory-panel');
+  ovDestroy('inv-title'); ovDestroy('inv-close'); ovDestroy('inv-empty');
+  for (var i = 0; i < 10; i++) { ovDestroy('inv-item-name-' + i); ovDestroy('inv-item-desc-' + i); ovDestroy('inv-item-src-' + i); }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// QUEST JOURNAL
+// ═══════════════════════════════════════════════════════════════════════════
+var journal = [];
+var _journalOpen = false;
+
+function addToJournal(entry) {
+  journal.push(entry);
+  console.log('[日志] ' + entry.title);
+  if (window._jrnBtnBg) {
+    window._jrnBtnBg.color = rgb(100, 200, 255);
+    setTimeout(function() { if (window._jrnBtnBg) window._jrnBtnBg.color = rgb(60, 60, 80); }, 800);
+  }
+}
+// Also expose globally for Kaboom scene callback context
+window.addToJournal = addToJournal;
+
+function toggleJournal() {
+  if (_journalOpen) { closeJournal(); }
+  else { openJournal(); }
+}
+
+function openJournal() {
+  if (_journalOpen) return;
+  _journalOpen = true;
+  closeInventory();
+  add([rect(460, 360, { radius: 12 }), color(15, 15, 30), opacity(0.95), pos(width()/2 - 230, 120), outline(2, rgb(100, 180, 255)), "journal-panel"]);
+  ovSet('jrn-title', width()/2 - 210, 135, '📜 任务日志', 20, 'rgb(140,200,255)');
+  ovSet('jrn-close', width()/2 + 120, 139, '按 J 关闭', 11, 'rgb(140,140,160)');
+  if (journal.length === 0) {
+    ovSet('jrn-empty', width()/2 - 210, 220, '（暂无记录 — 完成对话后自动记录）', 14, 'rgb(140,140,160)');
+  } else {
+    for (var i = 0; i < journal.length; i++) {
+      var entry = journal[i];
+      var jy = 175 + i * 65;
+      var statusIcon = entry.done ? '✅' : '📌';
+      ovSet('jrn-entry-title-' + i, width()/2 - 210, jy, statusIcon + ' ' + entry.title, 15, '#fff');
+      ovSet('jrn-entry-detail-' + i, width()/2 - 210, jy + 22, entry.detail, 11, 'rgb(160,180,200)');
+      ovSet('jrn-entry-time-' + i, width()/2 - 210, jy + 40, entry.time, 10, 'rgb(100,120,140)');
+    }
+  }
+}
+
+function closeJournal() {
+  _journalOpen = false;
+  destroyAll('journal-panel');
+  ovDestroy('jrn-title'); ovDestroy('jrn-close'); ovDestroy('jrn-empty');
+  for (var i = 0; i < 10; i++) { ovDestroy('jrn-entry-title-' + i); ovDestroy('jrn-entry-detail-' + i); ovDestroy('jrn-entry-time-' + i); }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TOAST / FLOATING TEXT
+// ═══════════════════════════════════════════════════════════════════════════
+var _toastId = 0;
+function showToast(msg) {
+  _toastId++;
+  var tid = 'toast-' + _toastId;
+  ovSet(tid, width()/2, 350, msg, 15, 'rgb(255,255,100)', { center: true });
+  var el = _ovEls[tid];
+  var start = Date.now();
+  function animToast() {
+    var elapsed = (Date.now() - start) / 1000;
+    var y = 350 - elapsed * 18;
+    var opacity = Math.max(0, 1 - elapsed / 2.0);
+    el.style.top = y + 'px';
+    el.style.opacity = opacity;
+    if (elapsed > 2.0) { ovDestroy(tid); return; }
+    requestAnimationFrame(animToast);
+  }
+  requestAnimationFrame(animToast);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Programmatic Helpers (for Playwright/testing)
+// ═══════════════════════════════════════════════════════════════════════════
+window.__clickNpc = function(idx) {
+  if (state.typing) return false;
+  if (state.done[idx]) return false;
+  if (state.activeNpc !== null && state.activeNpc !== idx) return false;
+  if (!state.npcUnlocked[idx]) return false;
+  console.log('[__clickNpc] triggering npc ' + idx);
+  startNpcConversation(idx);
+  return true;
+};
+window.__clickChoice = function(n) {
+  if (!state.showChoices || state.typing) return false;
+  var idx = state.activeNpc;
+  if (idx === null) return false;
+  var choices = currentChoices();
+  if (!choices || n >= choices.length) return false;
+  console.log('[__clickChoice] selecting choice ' + n + ' for npc ' + idx);
+  selectChoice(idx, n);
+  return true;
+};
+window.__gameState = null; // set after state init
+window.__gameVars = null;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// VARIABLE SYSTEM — mirrors game-data.js VARIABLES + checkCondition/applyEffects
+// ═══════════════════════════════════════════════════════════════════════════
+
+var vars = {
+  // Player state
+  origin: "",
+  weapon: "",
+  weapon_desc: "",
+  has_shrine_mark: false,
+  has_special_weapon: false,
+  has_lantern: false,
+  heading_to_square: false,
+  ready_to_depart: false,
+
+  // Affection
+  affection_lyra: 0,
+  affection_elder: 0,
+  affection_marcus: 0,
+
+  // Narrative
+  narrative_tension: 0,
+  quest: "none",
+  objective: "",
+  lyra_will_accompany: false,
+  shadow_has_advantage: false,
+  kael_trusts_player: false,
+
+  // NPC branch flags
+  lyra_shared_origin: false,
+  lyra_doubted_player: false,
+  lyra_observing_player: false,
+  lyra_admitted_past: false,
+  kael_gave_warning: false,
+  kael_explained_history: false,
+  kael_told_cautionary_tale: false,
+  marcus_shared_sword_lore: false,
+  marcus_shared_shield_lore: false,
+  marcus_gave_charm: false,
+  marcus_warning_given: false,
+
+  // Meta
+  met_lyra: false,
+  met_elder: false,
+  met_marcus: false,
+  knows_shrine_lore: false,
+  knows_betrayal_details: false,
+  refused_but_marked: false,
+  next_destination: ""
+};
+
+window.__gameVars = vars;
+
+function checkCondition(cond) {
+  if (!cond) return true;
+  if (cond.op === "and") return (cond.conds || []).every(function(c) { return checkCondition(c); });
+  if (cond.op === "or")  return (cond.conds || []).some(function(c) { return checkCondition(c); });
+  if (cond.op === "not") return !checkCondition(cond.cond);
+
+  var val = vars[cond.var];
+  switch (cond.op) {
+    case "==": return val === cond.value;
+    case "!=": return val !== cond.value;
+    case ">":  return Number(val) >  Number(cond.value);
+    case "<":  return Number(val) <  Number(cond.value);
+    case ">=": return Number(val) >= Number(cond.value);
+    case "<=": return Number(val) <= Number(cond.value);
+    default:   return false;
+  }
+}
+
+function applyEffects(effects) {
+  if (!effects || !Array.isArray(effects)) return;
+  for (var i = 0; i < effects.length; i++) {
+    var eff = effects[i];
+    if (!eff || !eff.var) continue;
+    switch (eff.action) {
+      case "set":
+        vars[eff.var] = eff.value;
+        break;
+      case "add":
+        vars[eff.var] = (typeof vars[eff.var] === "number" ? vars[eff.var] : 0) + (Number(eff.value) || 0);
+        break;
+      case "toggle":
+        vars[eff.var] = !vars[eff.var];
+        break;
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NPC DIALOGUE DATA — 3 scenes from game-data.js mapped to 3 NPCs
+// ※ 对话已做去AI味处理，详见 docs/dialogue-deai.md
+// ═══════════════════════════════════════════════════════════════════════════
+
+var npcData = [
+  // ─────────────────────────────────────────────────────────────────
+  // NPC 0: 银发少女 莉拉 — scene_prologue (序章 · 醒来)
+  // ─────────────────────────────────────────────────────────────────
+  {
+    id: 0,
+    name: "莉拉",
+    title: "银发少女",
+    emoji: "🌙",
+    x: 150, y: 230,
+    color: [140, 200, 230],
+    rounds: [
+      // Round 0: Opening narration + Lyra intro → first choice
+      {
+        lines: [
+          { speaker: "narrator", text: "你从陌生的房间醒来。\n阳光透过木窗的缝隙洒在脸上，带着稻草和晨露的气息。\n窗外是一片你从未见过的紫色天空。\n\n头很沉。记忆像是被打碎的镜子——你能感觉到碎片的存在，却拼不出完整的画面。\n你记得自己的名字。但除此之外……一片空白。" },
+          { speaker: "narrator", text: "木门被轻轻推开。一个银发的少女站在门口，逆光中看不清表情。她手上端着一碗冒着热气的汤。" },
+          { speaker: "lyra", text: "你醒了。感觉怎么样？", effects: [{ action: "set", var: "met_lyra", value: true }] },
+          { speaker: "lyra", text: "你在林子边上晕的。村长扛你回来的。躺了三天了。" },
+          { speaker: "lyra", text: "她把汤放在床边的木桌上，退后两步靠在门框上。似乎不打算靠近——但也没有离开的意思。\n\n「衣服我换的。别想歪——村里没人敢碰个浑身是血的外人。」" },
+          { speaker: "lyra", text: "我知道你一堆想问的。先告诉我——你怎么到这儿来的？走着走着就到了，还是……听见了什么？" }
+        ],
+        choices: [
+          {
+            text: "「我是听到了什么……在梦里。」",
+            effects: [
+              { action: "set", var: "origin", value: "called" },
+              { action: "add", var: "affection_lyra", value: 3 }
+            ],
+            nextRound: 1
+          },
+          {
+            text: "「就是路过。我也不知道怎么到这儿了。」",
+            effects: [
+              { action: "set", var: "origin", value: "accident" },
+              { action: "add", var: "affection_lyra", value: 1 }
+            ],
+            nextRound: 2
+          },
+          {
+            text: "（沉默地盯着她，等她往下说）",
+            effects: [
+              { action: "set", var: "origin", value: "silent" },
+              { action: "add", var: "affection_lyra", value: 2 }
+            ],
+            nextRound: 3
+          }
+        ]
+      },
+      // Round 1: "called" branch
+      {
+        lines: [
+          { speaker: "lyra", text: "果然。她轻轻点了点头。跟我一样。这村子……它会叫人。", effects: [{ action: "set", var: "lyra_shared_origin", value: true }] }
+        ],
+        nextRound: 4
+      },
+      // Round 2: "accident" branch
+      {
+        lines: [
+          { speaker: "lyra", text: "她看了你一眼，没说话。但你知道——她不信。" },
+          { speaker: "lyra", text: "她转过身去，声音淡淡的。\n\n「没人会'碰巧'走到这儿。星落村……地图上没有。是它找你，不是你找它。」\n\n她顿了顿。\n\n「你要是不想说……也行。」", effects: [{ action: "set", var: "lyra_doubted_player", value: true }] }
+        ],
+        nextRound: 4
+      },
+      // Round 3: "silent" branch
+      {
+        lines: [
+          { speaker: "lyra", text: "她轻轻哼了一声。不吭声，也算答了。" },
+          { speaker: "lyra", text: "她抱起双臂，歪着头看你。\n\n「不说话的人啊，要么是真傻，要么是装傻。你连站都站不稳——应该是真傻。」\n\n嘴角抽了一下。大概是在开玩笑。", effects: [{ action: "set", var: "lyra_observing_player", value: true }] }
+        ],
+        nextRound: 4
+      },
+      // Round 4: Transition to square
+      {
+        lines: [
+          { speaker: "lyra", text: "跟我来。村长在广场等你。记住了——别骗他。他看得出来。", effects: [{ action: "set", var: "heading_to_square", value: true }] }
+        ],
+        isFinal: true
+      }
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // NPC 1: 村长 凯尔 — scene_village_square (村中广场)
+  // ─────────────────────────────────────────────────────────────────
+  {
+    id: 1,
+    name: "凯尔",
+    title: "村长",
+    emoji: "🧙",
+    x: 400, y: 230,
+    color: [200, 170, 110],
+    rounds: [
+      // Round 0: Square narration + Kael intro → first choice (accept quest)
+      {
+        lines: [
+          { speaker: "narrator", text: "广场中央有一棵巨大的古树，树冠几乎遮蔽了整个广场。\n树下站着一位白发老人，他正仰头望着树梢，仿佛在聆听什么。" },
+          { speaker: "elder_kael", text: "啊，来了。他转过身，看了你一会儿。我是凯尔。欢迎。", effects: [{ action: "set", var: "met_elder", value: true }] },
+          { speaker: "elder_kael", text: "很少有人能走进来。去星落村的路……早就藏起来了。你身上有神社的味道。" },
+          { speaker: "elder_kael", text: "他走近了几步，你能看清他脸上的皱纹——每一道都像是刻上去的年轮。他的眼睛很亮，不像一个老人该有的亮度。\n\n「这棵树，」他拍了拍古树的树干，「跟我差不多老。它记得每一个来过这儿的人。今天早上，它跟我说有人要来。」" },
+          { speaker: "elder_kael", text: "不过——先不说你从哪来的。东边林子里出事了。神社的封印撑不住了。暗影在往外冒。我需要你帮忙。" }
+        ],
+        choices: [
+          {
+            text: "「告诉我怎么回事。我能做什么？」",
+            effects: [
+              { action: "set", var: "quest", value: "accepted_eager" },
+              { action: "add", var: "affection_elder", value: 5 },
+              { action: "add", var: "affection_lyra", value: 2 }
+            ],
+            nextRound: 1
+          },
+          {
+            text: "「暗影？封印？你说清楚。」",
+            effects: [
+              { action: "set", var: "quest", value: "accepted_cautious" },
+              { action: "add", var: "affection_elder", value: 3 }
+            ],
+            nextRound: 2
+          },
+          {
+            text: "「我只是路过。跟我没关系。」",
+            effects: [
+              { action: "set", var: "quest", value: "refused_initial" },
+              { action: "add", var: "affection_lyra", value: -1 }
+            ],
+            nextRound: 3
+          }
+        ]
+      },
+      // Round 1: "eager" branch → lore follow-up
+      {
+        lines: [
+          { speaker: "elder_kael", text: "好。凯尔眼里亮了一下。六十年前，七个人一起封的。现在……裂了。它在找人补上。你来了。", effects: [{ action: "set", var: "kael_trusts_player", value: true }, { action: "add", var: "narrative_tension", value: 1 }] },
+          { speaker: "elder_kael", text: "他伸手按住你的肩膀。老人的手瘦削却有力。\n\n「我年轻时也像你这样——听见有人要帮忙，二话不说就去。那是我最好的地方，也是最要命的。」\n\n他停了一下，眼神暗了暗。\n\n「因为急着帮忙的人……最容易被人当刀使。记着。」", effects: [{ action: "set", var: "kael_gave_warning", value: true }, { action: "add", var: "affection_elder", value: 3 }] }
+        ],
+        nextRound: 4
+      },
+      // Round 2: "cautious" branch → lore follow-up
+      {
+        lines: [
+          { speaker: "elder_kael", text: "小心是对的。凯尔点了点头。听好了——这可不是什么野兽强盗。暗影这东西……是积了几百年的怨气。只有神社的光压得住。可光越来越暗了。", effects: [{ action: "add", var: "narrative_tension", value: 2 }] },
+          { speaker: "elder_kael", text: "他在古树下的石凳上坐下，示意你也坐。\n\n「六十年前封印的时候……我们以为它睡着了就不醒了。错了。怨气这东西……不散。越攒越厚。跟这树一样，多一圈就是多一年。」\n\n他抬头看着树冠，声音更低了些。\n\n「封印……是拖时间。现在时间拖完了。」", effects: [{ action: "set", var: "kael_explained_history", value: true }, { action: "add", var: "affection_elder", value: 2 }] }
+        ],
+        nextRound: 4
+      },
+      // Round 3: "refused" branch → Lyra intervenes
+      {
+        lines: [
+          { speaker: "lyra", text: "不关你的事？莉拉冷笑了一声。那你为什么会在村口昏倒？为什么你身上带着神社的印记？她指了指你手腕上的淡淡光纹——你之前完全没注意到。" },
+          { speaker: "elder_kael", text: "行了，莉拉。凯尔抬手拦住她。强扭的瓜不甜。你要改主意了，我就在这儿。", effects: [{ action: "set", var: "refused_but_marked", value: true }, { action: "set", var: "has_shrine_mark", value: true }] },
+          { speaker: "elder_kael", text: "他转身要走，走了两步又停住。\n\n「知道吗，旅行者？」没回头。「六十年前，有个人也说了这话——'不关我事。'后来他回来了。什么都晚了。」\n\n「你别等到那天。」", effects: [{ action: "set", var: "kael_told_cautionary_tale", value: true }, { action: "add", var: "narrative_tension", value: 3 }] }
+        ],
+        nextRound: 4
+      },
+      // Round 4: Second choice — where to go next
+      {
+        lines: [
+          { speaker: "elder_kael", text: "神社在林子里，过了低语桥就到。但别空手去——找马库斯，铁匠铺那个大块头。让他给你件趁手的。", effects: [{ action: "set", var: "objective", value: "visit_blacksmith" }, { action: "set", var: "has_shrine_mark", value: true }] }
+        ],
+        choices: [
+          {
+            text: "「好，我去找铁匠。」",
+            effects: [{ action: "set", var: "next_destination", value: "blacksmith" }],
+            nextRound: 5
+          },
+          {
+            text: "「等等——神社的事，再多说点。」",
+            effects: [{ action: "add", var: "affection_elder", value: 2 }],
+            nextRound: 6
+          },
+          {
+            text: "「（看向莉拉）你也去吗？」",
+            effects: [{ action: "add", var: "affection_lyra", value: 2 }],
+            nextRound: 7
+          }
+        ]
+      },
+      // Round 5: "go to blacksmith" direct
+      {
+        lines: [
+          { speaker: "elder_kael", text: "去吧。光照着你。" }
+        ],
+        isFinal: true
+      },
+      // Round 6: "ask about shrine" lore
+      {
+        lines: [
+          { speaker: "elder_kael", text: "神社……很久以前一个守护者建的。她把暗影压在底下。后来……被自己人从背后捅了刀子。她的怨气反过来养大了暗影。封印不是关她——是想让她睡过去。可现在，她要醒了。", effects: [{ action: "set", var: "knows_shrine_lore", value: true }, { action: "set", var: "next_destination", value: "blacksmith" }] },
+          { speaker: "elder_kael", text: "他声音越来越轻，像在跟自己说话。\n\n「背后捅刀——人干这事从来不用学。她把命交给她最信的两个人：她爱的人，她的亲兄弟。封印仪式，三个人一起做的。仪式刚完……她转身的那一刻，刀就进去了。」\n\n「他们说，是为了不让她变成暗影。真话假话？六百年了，只有这棵树还记着。」", effects: [{ action: "set", var: "knows_betrayal_details", value: true }, { action: "add", var: "narrative_tension", value: 3 }] }
+        ],
+        isFinal: true
+      },
+      // Round 7: "ask about Lyra"
+      {
+        lines: [
+          { speaker: "lyra", text: "当然。她难得地露出一丝笑容。等你三年了，不差这一会儿。", effects: [{ action: "set", var: "lyra_will_accompany", value: true }, { action: "set", var: "next_destination", value: "blacksmith" }] },
+          { speaker: "lyra", text: "她走到你身边，声音低得只有你能听见。\n\n「三年前我一人过的桥。」手指不自觉地攥紧了袖口。「差点没回来。这次——两个人走，应该好点。」\n\n没看你的眼睛。但你看见了她攥紧的指节。", effects: [{ action: "set", var: "lyra_admitted_past", value: true }, { action: "add", var: "affection_lyra", value: 3 }] }
+        ],
+        isFinal: true
+      }
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // NPC 2: 铁匠 马库斯 — scene_blacksmith (铁匠铺)
+  // ─────────────────────────────────────────────────────────────────
+  {
+    id: 2,
+    name: "马库斯",
+    title: "铁匠",
+    emoji: "⚒️",
+    x: 650, y: 230,
+    color: [230, 115, 75],
+    rounds: [
+      // Round 0: Blacksmith narration + Marcus intro → weapon choice
+      {
+        lines: [
+          { speaker: "narrator", text: "铁锤敲击铁砧的声音从远处就能听到。铺子里热浪扑面，炉火映红了四壁。一个魁梧的男人正抡着铁锤，汗水顺着背脊流下。" },
+          { speaker: "marcus", text: "哈！又一个被老凯尔忽悠来的？马库斯头也不抬，手上锤子没停。行，我看看——剑，还是斧子？", effects: [{ action: "set", var: "met_marcus", value: true }] },
+          { speaker: "marcus", text: "等等……他停了锤子，上下看你。你身上……神社的味道。不简单。老凯尔这回没瞎。" },
+          { speaker: "marcus", text: "把锤子搁砧板上，擦了把汗。炉火在他背后跳，影子在墙上晃——老大一个。\n\n「知道不？上次有人带着神社味儿进这铺子，是六十年前。我爹接的。后来他死了。」\n\n他顿了顿，咧嘴一笑——笑是笑了，眼睛里没有。\n\n「不过别怕。我爹打的家伙事儿还活着。」" }
+        ],
+        choices: [
+          {
+            text: "「给我一把剑。轻便、锋利。」",
+            effects: [
+              { action: "set", var: "weapon", value: "sword" },
+              { action: "set", var: "weapon_desc", value: "银刃长剑——对暗影生物有额外杀伤" },
+              { action: "add", var: "affection_marcus", value: 2 }
+            ],
+            nextRound: 1
+          },
+          {
+            text: "「我需要一面盾牌。防守比进攻重要。」",
+            effects: [
+              { action: "set", var: "weapon", value: "shield" },
+              { action: "set", var: "weapon_desc", value: "古木护盾——能反弹暗影的低语" },
+              { action: "add", var: "affection_marcus", value: 1 }
+            ],
+            nextRound: 2
+          },
+          {
+            text: "「我不需要武器。双手就够了。」",
+            effects: [
+              { action: "set", var: "weapon", value: "none" },
+              { action: "set", var: "weapon_desc", value: "空手——但神社的光芒会是你真正的力量" },
+              { action: "add", var: "affection_marcus", value: 3 }
+            ],
+            nextRound: 3
+          }
+        ]
+      },
+      // Round 1: "sword" branch
+      {
+        lines: [
+          { speaker: "marcus", text: "好眼力！他从墙上取下一把剑，炉火照得剑身泛银。我爹这辈子最后一把——银刃剑。砍别的东西也就快一点，砍暗影……一下一个。", effects: [{ action: "set", var: "has_special_weapon", value: true }] },
+          { speaker: "marcus", text: "递剑的时候，手抖了一下。\n\n「这把剑……我爹打了三个月。人没了以后，我从废墟里扒出来的。摸着还热。」\n\n他吸了口气。\n\n「暗影不怕铁。怕的是打铁的人。懂吗——别让它白打了。」", effects: [{ action: "add", var: "affection_marcus", value: 3 }, { action: "set", var: "marcus_shared_sword_lore", value: true }] }
+        ],
+        nextRound: 4
+      },
+      // Round 2: "shield" branch
+      {
+        lines: [
+          { speaker: "marcus", text: "聪明。他从角落里翻出一面木盾，看着老，摸着结实。神社古树的枝子编的。暗影在你耳边嘀咕的时候——弹回去。", effects: [{ action: "set", var: "has_special_weapon", value: true }] },
+          { speaker: "marcus", text: "他把盾翻过来，背面刻着一行小字。\n\n「'守护，而非伤害。'我爹刻的。他觉得，最好的家伙事儿不是要人命——是保人命。」\n\n马库斯哼了一声。\n\n「天真。但也不全错。」", effects: [{ action: "add", var: "affection_marcus", value: 2 }, { action: "set", var: "marcus_shared_shield_lore", value: true }] }
+        ],
+        nextRound: 4
+      },
+      // Round 3: "none" branch
+      {
+        lines: [
+          { speaker: "marcus", text: "他一愣，然后放声大笑。哈哈哈！有种！笑完脸一收，嗓门压低。听着，小子。我爹就是空手去的。不是勇敢——是蠢。" },
+          { speaker: "marcus", text: "转身在架子上翻了翻，掏出个小布袋。\n\n「拿着。」塞你手里。三颗发光的石子儿。「神社护符的碴子。不值钱。暗影近了会烫手。比空手强。」\n\n不看你，又抄起锤子。\n\n「……走吧。趁我还没反悔。」", effects: [{ action: "set", var: "has_lantern", value: true }, { action: "set", var: "marcus_gave_charm", value: true }, { action: "add", var: "affection_marcus", value: 4 }] }
+        ],
+        nextRound: 4
+      },
+      // Round 4: Warning + departure
+      {
+        lines: [
+          { speaker: "marcus", text: "……算了。背过身去，嗓门低下来。不管你拿的啥，记住：暗影不打你身子。往你心里钻。让你看见你最怕的。", effects: [{ action: "set", var: "marcus_warning_given", value: true }, { action: "add", var: "narrative_tension", value: 2 }] },
+          { speaker: "marcus", text: "行了，别磨叽。神社在等你——我感觉得到。天越黑，它越凶。趁现在走，天黑前能到。", effects: [{ action: "set", var: "ready_to_depart", value: true }] }
+        ],
+        isFinal: true
+      }
+    ]
+  }
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GAME STATE
+// ═══════════════════════════════════════════════════════════════════════════
+
+var state = {
+  activeNpc: null,
+  typing: false,
+  typeActive: 0,
+  showChoices: false,
+  done: [false, false, false],
+  npcUnlocked: [true, false, false],
+  round: [0, 0, 0],
+  currentLineIdx: [0, 0, 0],
+  allDone: false
+};
+
+window.__gameState = state;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HELPER: get current choices for active NPC
+// ═══════════════════════════════════════════════════════════════════════════
+function currentChoices() {
+  var idx = state.activeNpc;
+  if (idx === null) return null;
+  var d = npcData[idx];
+  var r = state.round[idx];
+  var round = d.rounds[r];
+  return round ? round.choices : null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TYPEWRITER
+// ═══════════════════════════════════════════════════════════════════════════
+var _typeIdCounter = 0;
+
+function typeText(txtObj, lines, onDone) {
+  _typeIdCounter++;
+  var myId = _typeIdCounter;
+  state.typeActive = myId;
+  state.typing = true;
+  state.showChoices = false;
+  clearAllChoices();
+
+  var lineIdx = 0, charIdx = 0, display = "";
+
+  loop(0.04, function() {
+    if (state.typeActive !== myId) return;
+    if (lineIdx >= lines.length) {
+      state.typeActive = 0;
+      state.typing = false;
+      txtObj.text = display;
+      if (onDone) onDone();
+      return;
+    }
+    var cur = lines[lineIdx];
+    if (charIdx < cur.length) {
+      display += cur[charIdx];
+      charIdx++;
+      txtObj.text = display + "▌";
+    } else {
+      if (lineIdx < lines.length - 1) display += "\n";
+      lineIdx++;
+      charIdx = 0;
+      txtObj.text = display + "▌";
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CHOICE UI — supports 2 or 3 choices (DOM overlay for Chinese text)
+// ═══════════════════════════════════════════════════════════════════════════
+var _choiceBoxes = [];
+
+function showChoices(choices) {
+  if (state.showChoices) return;
+  state.showChoices = true;
+  _choiceBoxes = [];
+
+  var count = choices.length;
+  var boxW = count === 3 ? 230 : 340;
+  var startX = count === 3 ? 20 : 40;
+  var gap = count === 3 ? 250 : 380;
+  var labels = ["A", "B", "C"];
+  var fontSize = count === 3 ? 13 : 15;
+
+  for (var i = 0; i < count; i++) {
+    var cx = startX + i * (boxW + 10);
+    var box = add([
+      rect(boxW, 42, { radius: 8 }),
+      color(50, 60, 100),
+      pos(cx, 525),
+      area(),
+      outline(2, rgb(150, 180, 255)),
+      "choice-" + i
+    ]);
+    // DOM overlay for Chinese text support
+    ovSet('choice-txt-' + i, cx + 12, 535, labels[i] + '. ' + choices[i].text, fontSize, '#fff', { width: boxW - 20 });
+    _choiceBoxes.push({ box: box });
+  }
+}
+
+function clearAllChoices() {
+  state.showChoices = false;
+  for (var i = 0; i < _choiceBoxes.length; i++) {
+    destroy(_choiceBoxes[i].box);
+    ovDestroy('choice-txt-' + i);
+  }
+  _choiceBoxes = [];
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SPEAKER NAME + TITLE DISPLAY (DOM overlay for Chinese text)
+// ═══════════════════════════════════════════════════════════════════════════
+
+function setSpeakerName(name, title) {
+  var displayName = title ? title + ' · ' + name : name;
+  ovSet('speaker-name', 50, 415, displayName, 14, 'rgb(255,215,140)', { speaker: true });
+}
+
+function clearSpeakerName() {
+  ovDestroy('speaker-name');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SPEAKER COLOR MAP (from game-data.js CHARACTERS)
+// ═══════════════════════════════════════════════════════════════════════════
+var speakerColors = {
+  "narrator":   [170, 170, 170],
+  "lyra":       [140, 200, 230],
+  "elder_kael": [200, 170, 110],
+  "marcus":     [230, 115, 75]
+};
+
+var speakerNames = {
+  "narrator":   { name: "旁白", title: "" },
+  "lyra":       { name: "莉拉", title: "银发少女" },
+  "elder_kael": { name: "凯尔", title: "村长" },
+  "marcus":     { name: "马库斯", title: "铁匠" }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NPC CONVERSATION ENGINE
+// ═══════════════════════════════════════════════════════════════════════════
+function startNpcConversation(idx) {
+  if (state.typing) return;
+  if (state.done[idx]) return;
+  if (state.activeNpc !== null && state.activeNpc !== idx) return;
+  if (!state.npcUnlocked[idx]) return;
+
+  state.activeNpc = idx;
+  var d = npcData[idx];
+  var r = state.round[idx];
+  var round = d.rounds[r];
+  if (!round) return;
+
+  // Highlight active NPC
+  for (var i = 0; i < 3; i++) {
+    if (window._npcGlow[i]) window._npcGlow[i].opacity = (i === idx) ? 0.35 : 0;
+  }
+
+  playRound(idx, round);
+}
+
+function playRound(idx, round) {
+  var d = npcData[idx];
+
+  // Build display lines: each line prefixed with speaker info for the typewriter
+  var displayLines = [];
+  var totalEffects = [];
+
+  for (var i = 0; i < round.lines.length; i++) {
+    var ln = round.lines[i];
+    var sp = speakerNames[ln.speaker] || { name: ln.speaker, title: "" };
+    displayLines.push("【" + (sp.title ? sp.title + " · " : "") + sp.name + "】");
+    displayLines.push(ln.text);
+    if (ln.effects) {
+      totalEffects.push.apply(totalEffects, ln.effects);
+    }
+  }
+
+  // Apply effects from all lines
+  applyEffects(totalEffects);
+
+  // Play the lines
+  var allLines = flattenDisplayLines(displayLines);
+
+  typeText(window._dialogTxt, allLines, function() {
+    if (round.choices) {
+      showChoices(round.choices);
+      setSpeakerName("", "");
+    } else if (round.isFinal) {
+      state.done[idx] = true;
+      state.activeNpc = null;
+      if (window._npcGlow[idx]) window._npcGlow[idx].opacity = 0;
+      if (window._npcBadges[idx]) window._npcBadges[idx].opacity = 1;
+
+      if (idx + 1 < 3) {
+        state.npcUnlocked[idx + 1] = true;
+        if (window._npcLockIcons[idx + 1]) window._npcLockIcons[idx + 1].opacity = 0;
+        window._dialogTxt.text = "（对话结束）" + npcData[idx + 1].title + " " + npcData[idx + 1].name + " 已解锁 ▍";
+      } else {
+        window._dialogTxt.text = "（对话结束）序幕完成 ▍";
+      }
+
+      clearSpeakerName();
+      checkAllDone();
+    } else if (round.nextRound !== undefined) {
+      state.round[idx] = round.nextRound;
+      window._dialogTxt.text = "";
+      clearSpeakerName();
+      setTimeout(function() {
+        if (state.activeNpc === idx && !state.typing) {
+          startNpcConversation(idx);
+        }
+      }, 600);
+    } else {
+      state.done[idx] = true;
+      state.activeNpc = null;
+      if (window._npcGlow[idx]) window._npcGlow[idx].opacity = 0;
+      if (window._npcBadges[idx]) window._npcBadges[idx].opacity = 1;
+
+      if (idx + 1 < 3) {
+        state.npcUnlocked[idx + 1] = true;
+        if (window._npcLockIcons[idx + 1]) window._npcLockIcons[idx + 1].opacity = 0;
+        window._dialogTxt.text = "（对话结束）" + npcData[idx + 1].title + " " + npcData[idx + 1].name + " 已解锁 ▍";
+      } else {
+        window._dialogTxt.text = "（对话结束）序幕完成 ▍";
+      }
+      clearSpeakerName();
+      checkAllDone();
+    }
+  });
+}
+
+function flattenDisplayLines(displayLines) {
+  var result = [];
+  for (var i = 0; i < displayLines.length; i++) {
+    var line = displayLines[i];
+    var parts = line.split("\n");
+    for (var j = 0; j < parts.length; j++) {
+      result.push(parts[j]);
+    }
+  }
+  return result;
+}
+
+function selectChoice(idx, choiceN) {
+  if (!state.showChoices || state.typing) return;
+  if (state.activeNpc !== idx) return;
+
+  var round = npcData[idx].rounds[state.round[idx]];
+  if (!round || !round.choices) return;
+  if (choiceN >= round.choices.length) return;
+
+  var choice = round.choices[choiceN];
+
+  applyEffects(choice.effects || []);
+
+  vars["_last_choice_npc" + idx] = choice.text;
+
+  clearAllChoices();
+
+  if (choice.nextRound !== undefined) {
+    state.round[idx] = choice.nextRound;
+    startNpcConversation(idx);
+  } else {
+    state.done[idx] = true;
+    state.activeNpc = null;
+    if (window._npcGlow[idx]) window._npcGlow[idx].opacity = 0;
+    if (window._npcBadges[idx]) window._npcBadges[idx].opacity = 1;
+    window._dialogTxt.text = "（对话结束）";
+    clearSpeakerName();
+
+    // ── JOURNAL: NPC conversation complete ──
+    window.addToJournal({
+      title: '✅ 与' + npcData[idx].name + '对话完成',
+      detail: npcData[idx].title + ' — 获得了指引',
+      time: new Date().toLocaleTimeString(),
+      done: true
+    });
+
+    checkAllDone();
+  }
+}
+
+function checkAllDone() {
+  if (state.done[0] && state.done[1] && state.done[2] && !state.allDone) {
+    state.allDone = true;
+    window.__allDone = true;
+    setTimeout(function() {
+      // Background panel (Kaboom rect, no text issues)
+      add([
+        rect(500, 240, { radius: 12 }),
+        color(0, 0, 0), opacity(0.92),
+        pos(150, 180),
+        outline(3, rgb(255, 215, 0))
+      ]);
+      // DOM overlay for Chinese completion text
+      ovSet('done-title', width()/2, 230, '🌟 序幕完成 🌟', 36, 'rgb(255,215,0)', { center: true, title: true });
+      ovSet('done-subtitle', width()/2, 280, '你已获得三位守护者的指引。\n冒险才刚刚开始……', 16, 'rgb(220,220,220)', { center: true });
+      var summary = '武器: ' + (vars.weapon || '无') + ' | 好感: 莉拉' + vars.affection_lyra + ' 凯尔' + vars.affection_elder + ' 马库斯' + vars.affection_marcus;
+      ovSet('done-summary', width()/2, 320, summary, 13, 'rgb(180,180,200)', { center: true });
+    }, 800);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MAIN SCENE
+// ═══════════════════════════════════════════════════════════════════════════
+scene("main", function() {
+  // Background
+  add([rect(800, 300), color(25, 40, 25), pos(0, 400)]);
+
+  // Title
+  ovSet('title-cn', width()/2, 25, '🌙 星落之夜 · 序幕 🌙', 20, 'rgb(220,200,140)', { center: true });
+  ovSet('title-en', width()/2, 48, 'When Stars Fall, Shadows Rise', 11, 'rgb(140,140,160)', { center: true });
+
+  // ── NPC rendering ──
+  window._npcGlow = [];
+  window._npcBadges = [];
+  window._npcLockIcons = [];
+
+  for (var i = 0; i < 3; i++) {
+    var d = npcData[i];
+    var nx = d.x, ny = d.y;
+
+    // Glow
+    var g = add([rect(72, 98, { radius: 10 }), color(d.color), opacity(0), pos(nx, ny), origin("center")]);
+    window._npcGlow.push(g);
+
+    // Body
+    add([rect(64, 90, { radius: 8 }), color(d.color), pos(nx, ny), origin("center"), area(), "npc-" + i]);
+
+    // Emoji
+    add([text(d.emoji, { size: 32 }), pos(nx, ny - 5), origin("center")]);
+
+    // Name (DOM overlay for Chinese support)
+    ovSet('npc-name-' + i, nx, ny + 45, d.name, 13, '#fff', { center: true });
+
+    // Title (DOM overlay for Chinese support)
+    ovSet('npc-title-' + i, nx, ny + 61, d.title, 10, 'rgb(180,180,180)', { center: true });
+
+    // Done badge
+    var bdg = add([text("✓", { size: 18 }), color(100,255,100), pos(nx + 30, ny - 40), origin("center"), opacity(0)]);
+    window._npcBadges.push(bdg);
+
+    // Lock icon (for locked NPCs)
+    var lockOpacity = state.npcUnlocked[i] ? 0 : 1;
+    var lock = add([text("🔒", { size: 20 }), pos(nx - 30, ny - 40), origin("center"), opacity(lockOpacity)]);
+    window._npcLockIcons.push(lock);
+
+    // ── Affection indicator (DOM overlay for Chinese support) ──
+    var affKeys = ['affection_lyra', 'affection_elder', 'affection_marcus'];
+    var affVal = vars[affKeys[i]] || 0;
+    var affIcon = affVal >= 3 ? '💚' : (affVal > 0 ? '💛' : '🤍');
+    if (affVal < 0) affIcon = '💔';
+    ovSet('aff-' + i, nx, ny - 48, affIcon + ' ' + affVal, 10, 'rgb(200,200,200)', { center: true });
+  }
+
+  // ── Dialog box ──
+  add([rect(740, 170, { radius: 10 }), color(0,0,0), opacity(0.88), pos(30, 410), outline(2, rgb(200,200,200))]);
+
+  // Dialog text as DOM overlay for Chinese support
+  window._dialogEl = ovEl('dialog-txt');
+  window._dialogTxt = {
+    set text(val) {
+      ovSet('dialog-txt', 50, 445, val, 18, '#fff');
+    },
+    get text() {
+      var el = _ovEls['dialog-txt'];
+      return el ? el.innerHTML : '';
+    }
+  };
+  window._dialogTxt.text = '点击「莉拉」开始故事';
+
+  // ── Starting journal entry ──
+  window.addToJournal({
+    title: '🌙 序幕开始',
+    detail: '你在星落村醒来，记忆一片空白……',
+    time: new Date().toLocaleTimeString(),
+    done: true
+  });
+
+  // ── UI Buttons: Inventory + Journal ──
+  window._invBtnBg = add([rect(50, 26, { radius: 6 }), color(60, 60, 80), pos(620, 588), area(), opacity(0.85), 'inv-btn']);
+  add([text('🎒', { size: 14 }), pos(625, 592)]);
+  ovSet('inv-label', 648, 597, '背包 I', 9, 'rgb(200,200,200)');
+
+  window._jrnBtnBg = add([rect(50, 26, { radius: 6 }), color(60, 60, 80), pos(680, 588), area(), opacity(0.85), 'jrn-btn']);
+  add([text('📜', { size: 14 }), pos(685, 592)]);
+  ovSet('jrn-label', 708, 597, '日志 J', 9, 'rgb(200,200,200)');
+
+  onClick('inv-btn', function() { toggleInventory(); });
+  onClick('jrn-btn', function() { toggleJournal(); });
+
+  // ── NPC click handlers ──
+  for (var i = 0; i < 3; i++) {
+    (function(idx) {
+      onClick("npc-" + idx, function() {
+        startNpcConversation(idx);
+      });
+    })(i);
+  }
+
+  // ── Choice click handlers (up to 3 choices) ──
+  for (var c = 0; c < 3; c++) {
+    (function(choiceIdx) {
+      onClick("choice-" + choiceIdx, function() {
+        if (!state.showChoices || state.typing) return;
+        var idx = state.activeNpc;
+        if (idx === null) return;
+        selectChoice(idx, choiceIdx);
+      });
+    })(c);
+  }
+
+  // ── Keyboard shortcuts ──
+  onKeyPress("1", function() {
+    if (state.showChoices && !state.typing) selectChoice(state.activeNpc, 0);
+  });
+  onKeyPress("2", function() {
+    if (state.showChoices && !state.typing) selectChoice(state.activeNpc, 1);
+  });
+  onKeyPress("3", function() {
+    if (state.showChoices && !state.typing) selectChoice(state.activeNpc, 2);
+  });
+  onKeyPress("i", function() { toggleInventory(); });
+  onKeyPress("j", function() { toggleJournal(); });
+
+  onClick(function() {
+    // Click anywhere to skip/advance typing (skip feature placeholder)
+  });
+});
+
+go("main");
+</script>
+</div>
+</body>
+</html>
