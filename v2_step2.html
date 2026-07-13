@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VN v2 — Step 2: NPC Dialogues</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #111; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script src="https://unpkg.com/kaboom@2000.2.1/dist/kaboom.js"></script>
+<script>
+kaboom({
+  width: 800,
+  height: 600,
+  background: [20, 20, 40],
+  crisp: true,
+});
+
+const npcs = {
+  elena: {
+    name: "Elena",
+    color: [220, 120, 120],
+    labelColor: [255, 180, 180],
+    dialogues: [
+      "Hello, traveler. Are you ready?",
+      "The path ahead is dangerous — be careful.",
+      "I'll be waiting for your return.",
+    ]
+  },
+  marcus: {
+    name: "Marcus",
+    color: [80, 140, 220],
+    labelColor: [160, 200, 255],
+    dialogues: [
+      "Hey there! Need a sword arm?",
+      "I've been guarding this village for years.",
+      "Watch out for the eastern pass. Bandits.",
+    ]
+  }
+};
+
+let dialIndex = { elena: 0, marcus: 0 };
+
+scene("game", () => {
+  // --- NPC A: Elena (red) ---
+  add([
+    rect(80, 120),
+    color(npcs.elena.color[0], npcs.elena.color[1], npcs.elena.color[2]),
+    pos(200, 80),
+    area(),
+    "npc_elena",
+  ]);
+
+  add([
+    text(npcs.elena.name, { size: 14 }),
+    color(npcs.elena.labelColor[0], npcs.elena.labelColor[1], npcs.elena.labelColor[2]),
+    pos(215, 210),
+  ]);
+
+  // --- NPC B: Marcus (blue) ---
+  add([
+    rect(80, 120),
+    color(npcs.marcus.color[0], npcs.marcus.color[1], npcs.marcus.color[2]),
+    pos(520, 80),
+    area(),
+    "npc_marcus",
+  ]);
+
+  add([
+    text(npcs.marcus.name, { size: 14 }),
+    color(npcs.marcus.labelColor[0], npcs.marcus.labelColor[1], npcs.marcus.labelColor[2]),
+    pos(525, 210),
+  ]);
+
+  // --- Dialogue box ---
+  add([
+    rect(width() - 60, 100),
+    color(0, 0, 0, 200),
+    pos(30, height() - 180),
+    outline(2, rgb(255, 255, 255)),
+  ]);
+
+  const speakerLabel = add([
+    text("", { size: 16 }),
+    color(255, 255, 255),
+    pos(50, height() - 190),
+  ]);
+
+  const dlg = add([
+    text("Click an NPC to speak with them.", { size: 22 }),
+    color(255, 255, 255),
+    pos(50, height() - 155),
+  ]);
+
+  // --- NPC click handlers ---
+  function talkTo(tag) {
+    const npc = npcs[tag];
+    const idx = dialIndex[tag];
+    if (idx >= npc.dialogues.length) {
+      dlg.text = npc.name + " has nothing more to say.";
+      speakerLabel.text = "";
+      return;
+    }
+    speakerLabel.text = npc.name + ":";
+    speakerLabel.color = rgb(npc.labelColor[0], npc.labelColor[1], npc.labelColor[2]);
+    dlg.text = npc.dialogues[idx];
+    dialIndex[tag] = idx + 1;
+  }
+
+  onClick("npc_elena", () => talkTo("elena"));
+  onClick("npc_marcus", () => talkTo("marcus"));
+});
+
+go("game");
+</script>
+</body>
+</html>

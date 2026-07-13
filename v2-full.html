@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=800">
+<title>VN v2 - Three NPCs</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a1a;
+    display: flex; justify-content: center; align-items: center;
+    height: 100vh; overflow: hidden;
+    font-family: 'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+  }
+  canvas { display: block; border-radius: 8px; }
+</style>
+</head>
+<body>
+<script src="https://unpkg.com/kaboom@2000.2.1/dist/kaboom.js"></script>
+<script>
+kaboom({ global: true, width: 800, height: 600, background: [15,15,35] });
+
+// ─── Playwright Click Compatibility Fix (ENABLED) ───
+(function() {
+  var canvas = document.querySelector('canvas');
+  if (!canvas) return;
+  console.log('[v2-fix] canvas found, installing capture-phase click shim');
+
+  // Helper: dispatch a synthetic MouseEvent with source event coordinates
+  function synthMouse(type, src) {
+    return new MouseEvent(type, {
+      button: src.button,
+      buttons: src.buttons,
+      clientX: src.clientX, clientY: src.clientY,
+      offsetX: src.offsetX, offsetY: src.offsetY,
+      screenX: src.screenX, screenY: src.screenY,
+      movementX: 0, movementY: 0,
+      bubbles: true, cancelable: true
+    });
+  }
+
+  // Capture-phase mousedown → also fire mousemove so Kaboom tracks position
+  canvas.addEventListener('mousedown', function(e) {
+    canvas.dispatchEvent(synthMouse('mousemove', e));
+  }, true);
+
+  // Capture-phase pointerdown → also fire pointermove (modern browsers/Playwright)
+  canvas.addEventListener('pointerdown', function(e) {
+    canvas.dispatchEvent(new PointerEvent('pointermove', {
+      pointerId: e.pointerId, pointerType: e.pointerType,
+      clientX: e.clientX, clientY: e.clientY,
+      bubbles: true, cancelable: true
+    }));
+  }, true);
+
+  // Capture-phase mouseup: if Kaboom already thinks mouse is down,
+  // stop the original and re-dispatch after a frame
+  canvas.addEventListener('mouseup', function(e) {
+    var pressed = (typeof isMousePressed === 'function') && isMousePressed();
+    if (pressed) {
+      e.stopImmediatePropagation();
+      requestAnimationFrame(function() {
+        canvas.dispatchEvent(synthMouse('mouseup', e));
+      });
+    }
+  }, true);
+
+  // Capture-phase pointerup: same treatment for pointer events
+  canvas.addEventListener('pointerup', function(e) {
+    var pressed = (typeof isMousePressed === 'function') && isMousePressed();
+    if (pressed) {
+      e.stopImmediatePropagation();
+      requestAnimationFrame(function() {
+        canvas.dispatchEvent(new PointerEvent('pointerup', {
+          pointerId: e.pointerId, pointerType: e.pointerType,
+          clientX: e.clientX, clientY: e.clientY,
+          button: e.button, buttons: e.buttons,
+          bubbles: true, cancelable: true
+        }));
+      });
+    }
+  }, true);
+
+  console.log('[v2-fix] capture-phase click shim installed');
+})();
+
+// ─── Playwright Programmatic Helpers ───
+// Fallback: page.evaluate('__clickNpc(0)') directly triggers NPC interaction
+window.__clickNpc = function(idx) {
+  if (state.typing) { console.log('[__clickNpc] busy, typing'); return false; }
+  if (state.done[idx]) { console.log('[__clickNpc] npc ' + idx + ' already done'); return false; }
+  if (state.activeNpc !== null && state.activeNpc !== idx) { console.log('[__clickNpc] another npc active'); return false; }
+  console.log('[__clickNpc] triggering npc ' + idx);
+  startTalk(idx);
+  return true;
+};
+window.__clickChoice = function(n) {
+  if (!state.showChoices || state.typing) { console.log('[__clickChoice] no choices showing or typing'); return false; }
+  var idx = state.activeNpc;
+  if (idx === null) { console.log('[__clickChoice] no active npc'); return false; }
+  console.log('[__clickChoice] selecting choice ' + n + ' for npc ' + idx);
+  state.choice[idx] = npcData[idx].choices.r1[n].branch;
+  state.round[idx] = 1;
+  clearChoices();
+  startTalk(idx);
+  return true;
+};
+window.__waitFor = function(prop, timeout) {
+  timeout = timeout || 10000;
+  return new Promise(function(resolve, reject) {
+    var start = Date.now();
+    var iv = setInterval(function() {
+      if (window[prop]) { clearInterval(iv); resolve(true); }
+      else if (Date.now() - start > timeout) { clearInterval(iv); reject(new Error('timeout waiting for ' + prop)); }
+    }, 100);
+  });
+};
+
+// ─── Game State ───
+var state = {
+  activeNpc: null,    // 0, 1, 2 or null
+  typing: false,
+  typeActive: false,
+  showChoices: false,
+  done: [false, false, false],
+  round: [0, 0, 0],
+  choice: [null, null, null],
+  allDone: false
+};
+window.__gameState = state;
+
+// ─── NPC Data ───
+var npcData = [
+  {
+    id: 0, name: "长者 Kael", emoji: "🧙",
+    x: 150, y: 230, color: [180,140,80],
+    dialogues: {
+      r1: ["远道而来的旅人啊，神殿的封印正在消退。","每一轮明月升起，黑暗便在深处躁动一分。","你……能感觉到吗？空气中那股不安的气息。"],
+      r2a: ["千年之前，七位贤者用生命铸成封印，","将混沌之主囚禁于神殿深处。","如今最后一道封印正在崩裂，时间不多了。"],
+      r2b: ["勇敢的孩子。你必须找到三块水晶碎片。","它们散落在禁林、深渊裂隙与遗忘之塔。","但每一条路都有远古守护者在等待着你。"]
+    },
+    choices: { r1: [
+      { text: "神殿有什么来历？", branch: "a" },
+      { text: "我能帮上什么忙？", branch: "b" }
+    ]}
+  },
+  {
+    id: 1, name: "守卫 Thorne", emoji: "🛡️",
+    x: 400, y: 230, color: [100,140,200],
+    dialogues: {
+      r1: ["站住。没有长者的许可，谁也不准通过。","表明你的来意，陌生人。","我见过太多心怀不轨之人想混进神殿。"],
+      r2a: ["哼，难得。你走的是一条光荣之路。","前方的石桥布有机关——只踩发蓝光的石板。","愿你的剑锋永远锐利，旅人。"],
+      r2b: ["好奇心在这些地方杀的可不只是猫。","行吧，你可以过去。但过了桥之后，","别碰任何东西。我可不会来救你。"]
+    },
+    choices: { r1: [
+      { text: "我要修复神殿封印。", branch: "a" },
+      { text: "只是路过，让我过去。", branch: "b" }
+    ]}
+  },
+  {
+    id: 2, name: "旅人 Lyra", emoji: "🧭",
+    x: 650, y: 230, color: [160,100,200],
+    dialogues: {
+      r1: ["嘘……你听到了吗？","这片森林记得每一个走过它的人。","有些人……再也没有离开过。"],
+      r2a: ["它们在说「背叛」。七位贤者中，","有一位并非心甘情愿献出生命。","他的影子至今仍在林间游荡，寻找着什么……"],
+      r2b: ["今天黎明，一个披斗篷的人影经过。","他在老橡树上刻下了奇怪的符文。","上面写着：钥匙从未被毁——它被藏起来了。"]
+    },
+    choices: { r1: [
+      { text: "低语在说什么？", branch: "a" },
+      { text: "你见过其他人吗？", branch: "b" }
+    ]}
+  }
+];
+
+// ─── Typewriter ───
+function typeText(txtObj, lines, onDone) {
+  // Cancel any previous typing
+  state.typeActive = false;
+  state.typing = true;
+  state.showChoices = false;
+  if (window._choice1) { destroy(window._choice1); destroy(window._choice1txt); window._choice1 = null; }
+  if (window._choice2) { destroy(window._choice2); destroy(window._choice2txt); window._choice2 = null; }
+
+  var lineIdx = 0, charIdx = 0, display = "";
+  state.typeActive = true;
+  var myId = state.typeActive; // capture for closure
+
+  loop(0.04, function() {
+    if (!state.typeActive || state.typeActive !== myId) return;
+    if (lineIdx >= lines.length) {
+      state.typeActive = false;
+      state.typing = false;
+      txtObj.text = display;
+      if (onDone) onDone();
+      return;
+    }
+    var cur = lines[lineIdx];
+    if (charIdx < cur.length) {
+      display += cur[charIdx];
+      charIdx++;
+      txtObj.text = display + "▌";
+    } else {
+      display += "\n";
+      lineIdx++;
+      charIdx = 0;
+      txtObj.text = display + "▌";
+    }
+  });
+}
+
+function showChoices(choices) {
+  if (state.showChoices) return;
+  state.showChoices = true;
+
+  window._choice1 = add([
+    rect(340, 42, { radius: 8 }),
+    color(50, 60, 100),
+    pos(40, 525),
+    area(),
+    outline(2, rgb(150, 180, 255)),
+    "choice-0"
+  ]);
+  window._choice1txt = add([
+    text("A. " + choices[0].text, { size: 15 }),
+    color(255, 255, 255),
+    pos(52, 535)
+  ]);
+
+  window._choice2 = add([
+    rect(340, 42, { radius: 8 }),
+    color(50, 60, 100),
+    pos(420, 525),
+    area(),
+    outline(2, rgb(150, 180, 255)),
+    "choice-1"
+  ]);
+  window._choice2txt = add([
+    text("B. " + choices[1].text, { size: 15 }),
+    color(255, 255, 255),
+    pos(432, 535)
+  ]);
+}
+
+function clearChoices() {
+  state.showChoices = false;
+  if (window._choice1) { destroy(window._choice1); destroy(window._choice1txt); window._choice1 = null; }
+  if (window._choice2) { destroy(window._choice2); destroy(window._choice2txt); window._choice2 = null; }
+}
+
+// ─── Start NPC Conversation ───
+function startTalk(idx) {
+  if (state.typing) return;
+  if (state.done[idx]) return;
+  if (state.activeNpc !== null && state.activeNpc !== idx) return;
+
+  state.activeNpc = idx;
+  var d = npcData[idx];
+  var r = state.round[idx];
+
+  // Highlight active
+  for (var i = 0; i < 3; i++) {
+    if (window._glow[i]) window._glow[i].opacity = (i === idx) ? 0.4 : 0;
+  }
+
+  if (r === 0) {
+    typeText(window._dialogTxt, d.dialogues.r1, function() {
+      showChoices(d.choices.r1);
+    });
+  } else if (r === 1) {
+    var branch = state.choice[idx];
+    var key = branch === 'a' ? 'r2a' : 'r2b';
+    typeText(window._dialogTxt, d.dialogues[key], function() {
+      state.done[idx] = true;
+      state.activeNpc = null;
+      if (window._glow[idx]) window._glow[idx].opacity = 0;
+      if (window._badges[idx]) window._badges[idx].opacity = 1;
+      window._dialogTxt.text = "（对话结束）点击其他角色继续 ▍";
+      checkAllDone();
+    });
+  }
+}
+
+function checkAllDone() {
+  if (state.done[0] && state.done[1] && state.done[2] && !state.allDone) {
+    state.allDone = true;
+    window.__allDone = true;
+    setTimeout(function() {
+      add([
+        rect(500, 200, { radius: 12 }),
+        color(0, 0, 0), opacity(0.92),
+        pos(150, 200),
+        outline(3, rgb(255, 215, 0))
+      ]);
+      add([
+        text("🌟 序幕完成 🌟", { size: 36 }),
+        color(255, 215, 0),
+        pos(width() / 2, 260),
+        origin("center")
+      ]);
+      add([
+        text("你已获得三位守护者的指引。\n冒险才刚刚开始……", { size: 16 }),
+        color(220, 220, 220),
+        pos(width() / 2, 310),
+        origin("center")
+      ]);
+    }, 800);
+  }
+}
+
+// ─── Main Scene ───
+scene("main", function() {
+  // Background
+  add([rect(800, 300), color(25, 40, 25), pos(0, 400)]);
+
+  // Title
+  add([text("⚔️ 神殿之路 · 序幕 ⚔️", { size: 20 }), color(220, 200, 140), pos(width()/2, 25), origin("center")]);
+
+  // NPCs
+  window._glow = [];
+  window._badges = [];
+
+  for (var i = 0; i < 3; i++) {
+    var d = npcData[i];
+    var nx = d.x, ny = d.y;
+
+    // Glow
+    var g = add([rect(72, 98, { radius: 10 }), color(d.color), opacity(0), pos(nx, ny), origin("center")]);
+    window._glow.push(g);
+
+    // Body
+    add([rect(64, 90, { radius: 8 }), color(d.color), pos(nx, ny), origin("center"), area(), "npc-" + i]);
+
+    // Emoji
+    add([text(d.emoji, { size: 32 }), pos(nx, ny - 5), origin("center")]);
+
+    // Name
+    add([text(d.name, { size: 13 }), color(255,255,255), pos(nx, ny + 55), origin("center")]);
+
+    // Done badge
+    var bdg = add([text("✓", { size: 18 }), color(100,255,100), pos(nx + 30, ny - 40), origin("center"), opacity(0)]);
+    window._badges.push(bdg);
+  }
+
+  // Dialog box
+  add([rect(740, 150, { radius: 10 }), color(0,0,0), opacity(0.88), pos(30, 430), outline(2, rgb(200,200,200))]);
+
+  window._dialogTxt = add([
+    text("点击一位角色开始对话", { size: 18 }),
+    color(255, 255, 255),
+    pos(50, 445)
+  ]);
+
+  // NPC click handlers
+  for (var i = 0; i < 3; i++) {
+    (function(idx) {
+      onClick("npc-" + idx, function() {
+        startTalk(idx);
+      });
+    })(i);
+  }
+
+  // Choice click handlers
+  onClick("choice-0", function() {
+    if (!state.showChoices || state.typing) return;
+    var idx = state.activeNpc;
+    if (idx === null) return;
+    state.choice[idx] = npcData[idx].choices.r1[0].branch;
+    state.round[idx] = 1;
+    clearChoices();
+    startTalk(idx);
+  });
+
+  onClick("choice-1", function() {
+    if (!state.showChoices || state.typing) return;
+    var idx = state.activeNpc;
+    if (idx === null) return;
+    state.choice[idx] = npcData[idx].choices.r1[1].branch;
+    state.round[idx] = 1;
+    clearChoices();
+    startTalk(idx);
+  });
+
+  // Keyboard
+  onKeyPress("1", function() {
+    if (state.showChoices && !state.typing) {
+      onClick("choice-0", {});
+    }
+  });
+  onKeyPress("2", function() {
+    if (state.showChoices && !state.typing) {
+      onClick("choice-1", {});
+    }
+  });
+});
+
+go("main");
+</script>
+</body>
+</html>

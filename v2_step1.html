@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VN v2 — Step 1: 2 NPCs</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #111; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script src="https://unpkg.com/kaboom@2000.2.1/dist/kaboom.js"></script>
+<script>
+kaboom({
+  width: 800,
+  height: 600,
+  background: [20, 20, 40],
+  crisp: true,
+});
+
+scene("game", () => {
+  // --- NPC A (red, Elena) ---
+  add([
+    rect(80, 120),
+    color(220, 120, 120),
+    pos(200, 80),
+    area(),
+  ]);
+
+  add([
+    text("Elena", { size: 14 }),
+    color(200, 200, 200),
+    pos(215, 210),
+  ]);
+
+  // --- NPC B (blue, Marcus) ---
+  add([
+    rect(80, 120),
+    color(80, 140, 220),
+    pos(520, 80),
+    area(),
+  ]);
+
+  add([
+    text("Marcus", { size: 14 }),
+    color(200, 200, 200),
+    pos(525, 210),
+  ]);
+
+  // --- Dialogue box ---
+  add([
+    rect(width() - 60, 100),
+    color(0, 0, 0, 200),
+    pos(30, height() - 180),
+    outline(2, rgb(255, 255, 255)),
+  ]);
+
+  const dlg = add([
+    text("Hello, traveler. Are you ready?", { size: 22 }),
+    color(255, 255, 255),
+    pos(50, height() - 160),
+  ]);
+
+  // --- Button ---
+  add([
+    rect(220, 48),
+    color(80, 180, 80),
+    pos(width() / 2 - 110, height() - 65),
+    area(),
+    "btn",
+  ]);
+
+  const btnLabel = add([
+    text("▶ Yes, let's go!", { size: 20 }),
+    color(255, 255, 255),
+    pos(width() / 2 - 62, height() - 53),
+  ]);
+
+  let done = false;
+  onClick("btn", () => {
+    if (done) return;
+    done = true;
+    dlg.text = "Great! Let the adventure begin.";
+    btnLabel.text = "✕ Close";
+  });
+});
+
+go("game");
+</script>
+</body>
+</html>

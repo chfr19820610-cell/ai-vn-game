@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Last Flame — 余烬酒馆 (with Audio)</title>
+<style>
+  :root {
+    --bg: #0d0d1a;
+    --panel: rgba(10,10,30,0.94);
+    --gold: #e8c56d;
+    --text: #e0d8c8;
+    --text-dim: #8a8578;
+    --choice-bg: rgba(30,30,60,0.9);
+    --choice-hover: rgba(60,50,80,0.9);
+    --choice-border: #5a4a6a;
+    --lena-color: #e8a0a0;
+    --kael-color: #a0b8e8;
+    --eira-color: #a0e8c0;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    font-family: 'Georgia', 'Noto Serif SC', serif;
+    overflow: hidden;
+    user-select: none;
+    background-image:
+      radial-gradient(ellipse at 50% 30%, rgba(40,20,60,0.4) 0%, transparent 70%),
+      radial-gradient(ellipse at 50% 80%, rgba(30,20,10,0.5) 0%, transparent 60%);
+  }
+
+  #game {
+    width: 800px;
+    height: 600px;
+    position: relative;
+    background: linear-gradient(180deg, #0a0a18 0%, #14102a 40%, #1a1224 100%);
+    border: 2px solid #2a2040;
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: 0 0 40px rgba(60,20,80,0.3), inset 0 0 60px rgba(0,0,0,0.5);
+  }
+
+  /* Audio toggle button */
+  #audio-toggle {
+    position: absolute;
+    top: 10px;
+    right: 14px;
+    z-index: 200;
+    background: rgba(10,10,30,0.7);
+    border: 1px solid #3a3050;
+    border-radius: 4px;
+    color: var(--text-dim);
+    font-size: 18px;
+    width: 32px;
+    height: 32px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    line-height: 1;
+    padding: 0;
+  }
+  #audio-toggle:hover {
+    border-color: var(--gold);
+    color: var(--gold);
+    background: rgba(30,20,50,0.9);
+  }
+  #audio-toggle.muted {
+    color: #604040;
+    border-color: #403030;
+  }
+
+  /* ---- SCENE BACKGROUND ---- */
+  #scene {
+    width: 100%;
+    height: 100%;
+    position: relative;
+  }
+
+  /* Fireplace glow */
+  #fireplace {
+    position: absolute;
+    bottom: 30%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 200px;
+    height: 120px;
+    background: radial-gradient(ellipse at center, rgba(255,140,30,0.25) 0%, rgba(200,80,20,0.08) 50%, transparent 75%);
+    border-radius: 50%;
+    animation: flicker 2s ease-in-out infinite alternate;
+  }
+  @keyframes flicker {
+    0% { opacity: 0.7; transform: translateX(-50%) scaleY(1); }
+    50% { opacity: 1; transform: translateX(-50%) scaleY(1.08); }
+    100% { opacity: 0.75; transform: translateX(-50%) scaleY(0.95); }
+  }
+
+  /* ---- NPC CHARACTERS ---- */
+  .npc {
+    position: absolute;
+    bottom: 22%;
+    transition: transform 0.5s ease, opacity 0.5s ease, filter 0.5s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .npc.inactive {
+    opacity: 0.25;
+    filter: grayscale(0.7) brightness(0.5);
+  }
+  .npc.hidden {
+    display: none;
+  }
+
+  .npc-portrait {
+    width: 100px;
+    height: 130px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 60px;
+    position: relative;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    transition: box-shadow 0.5s;
+  }
+  .npc.active .npc-portrait {
+    box-shadow: 0 0 24px rgba(255,255,255,0.15), 0 4px 20px rgba(0,0,0,0.5);
+  }
+
+  .npc-label {
+    margin-top: 6px;
+    font-size: 13px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    transition: color 0.4s;
+  }
+  .npc.active .npc-label {
+    color: var(--gold);
+  }
+
+  /* Lena - warm red/pink */
+  #npc-lena { left: 60px; }
+  #npc-lena .npc-portrait { background: linear-gradient(180deg, #6b3030, #3d1a1a); }
+  #npc-lena.active .npc-portrait { box-shadow: 0 0 20px rgba(232,160,160,0.3), 0 4px 20px rgba(0,0,0,0.5); }
+
+  /* Kael - cool blue */
+  #npc-kael { left: 230px; }
+  #npc-kael .npc-portrait { background: linear-gradient(180deg, #2a3d5c, #1a2840); }
+  #npc-kael.active .npc-portrait { box-shadow: 0 0 20px rgba(160,184,232,0.3), 0 4px 20px rgba(0,0,0,0.5); }
+
+  /* Eira - green */
+  #npc-eira { left: 400px; }
+  #npc-eira .npc-portrait { background: linear-gradient(180deg, #2a4a38, #1a3025); }
+  #npc-eira.active .npc-portrait { box-shadow: 0 0 20px rgba(160,232,192,0.3), 0 4px 20px rgba(0,0,0,0.5); }
+
+  /* ---- DIALOGUE BOX ---- */
+  #dialog-box {
+    position: absolute;
+    left: 24px;
+    right: 24px;
+    bottom: 20px;
+    min-height: 140px;
+    background: var(--panel);
+    border: 1px solid #3a3050;
+    border-radius: 6px;
+    padding: 18px 22px;
+    display: flex;
+    flex-direction: column;
+    backdrop-filter: blur(10px);
+  }
+
+  #speaker-name {
+    font-size: 13px;
+    font-weight: bold;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 6px;
+    min-height: 18px;
+  }
+
+  #dialog-text {
+    font-size: 18px;
+    line-height: 1.6;
+    color: var(--text);
+    min-height: 58px;
+    flex: 1;
+  }
+
+  #cursor-blink {
+    display: inline-block;
+    color: var(--gold);
+    animation: blink 0.7s step-end infinite;
+  }
+  @keyframes blink {
+    50% { opacity: 0; }
+  }
+
+  /* ---- CHOICE BUTTONS ---- */
+  #choices {
+    position: absolute;
+    left: 24px;
+    right: 24px;
+    bottom: 168px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    z-index: 10;
+  }
+
+  .choice-btn {
+    background: var(--choice-bg);
+    border: 1px solid var(--choice-border);
+    border-radius: 4px;
+    color: #c0b8d0;
+    padding: 10px 16px;
+    font-size: 15px;
+    font-family: inherit;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.2s;
+    letter-spacing: 0.5px;
+  }
+  .choice-btn:hover {
+    background: var(--choice-hover);
+    border-color: #8a7a9a;
+    color: #e8d8f0;
+    padding-left: 22px;
+  }
+  .choice-btn:active {
+    background: rgba(80,60,100,0.9);
+  }
+
+  /* ---- TITLE SCREEN ---- */
+  #title-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(5,5,15,0.92);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    transition: opacity 0.8s;
+  }
+  #title-overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  #title-game {
+    font-size: 42px;
+    color: var(--gold);
+    letter-spacing: 6px;
+    font-weight: bold;
+    text-shadow: 0 0 30px rgba(232,197,109,0.4);
+    margin-bottom: 10px;
+  }
+  #title-sub {
+    font-size: 15px;
+    color: var(--text-dim);
+    letter-spacing: 3px;
+    margin-bottom: 48px;
+  }
+  #title-start {
+    background: none;
+    border: 1px solid var(--gold);
+    color: var(--gold);
+    padding: 12px 40px;
+    font-size: 16px;
+    font-family: inherit;
+    letter-spacing: 3px;
+    cursor: pointer;
+    transition: all 0.3s;
+    border-radius: 2px;
+  }
+  #title-start:hover {
+    background: rgba(232,197,109,0.12);
+    box-shadow: 0 0 20px rgba(232,197,109,0.2);
+  }
+
+  /* ---- END SCREEN ---- */
+  #end-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(5,5,15,0.94);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    transition: opacity 1s;
+    opacity: 0;
+    pointer-events: none;
+  }
+  #end-overlay.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  #end-title {
+    font-size: 36px;
+    color: var(--gold);
+    letter-spacing: 4px;
+    margin-bottom: 16px;
+  }
+  #end-desc {
+    font-size: 16px;
+    color: var(--text-dim);
+    max-width: 500px;
+    text-align: center;
+    line-height: 1.7;
+    margin-bottom: 36px;
+  }
+  #end-restart {
+    background: none;
+    border: 1px solid var(--gold);
+    color: var(--gold);
+    padding: 10px 32px;
+    font-size: 14px;
+    font-family: inherit;
+    letter-spacing: 2px;
+    cursor: pointer;
+    transition: all 0.3s;
+    border-radius: 2px;
+  }
+  #end-restart:hover {
+    background: rgba(232,197,109,0.12);
+  }
+
+  /* ---- PARTICLES ---- */
+  .particle {
+    position: absolute;
+    background: rgba(255,200,100,0.5);
+    border-radius: 50%;
+    pointer-events: none;
+    animation: rise linear forwards;
+  }
+  @keyframes rise {
+    0% { opacity: 0.6; transform: translateY(0) scale(1); }
+    100% { opacity: 0; transform: translateY(-120px) scale(0.3); }
+  }
+</style>
+</head>
+<body>
+
+<div id="game">
+  <!-- Audio toggle button -->
+  <button id="audio-toggle" title="Toggle Sound">🔊</button>
+
+  <!-- Title screen -->
+  <div id="title-overlay">
+    <div id="title-game">余烬酒馆</div>
+    <div id="title-sub">THE LAST FLAME</div>
+    <button id="title-start" onclick="startGame()">开 始 游 戏</button>
+  </div>
+
+  <!-- Scene -->
+  <div id="scene">
+    <div id="fireplace"></div>
+
+    <!-- Lena -->
+    <div class="npc hidden" id="npc-lena">
+      <div class="npc-portrait">👩‍🍳</div>
+      <div class="npc-label">Lena · 酒馆主</div>
+    </div>
+
+    <!-- Kael -->
+    <div class="npc hidden" id="npc-kael">
+      <div class="npc-portrait">⚔️</div>
+      <div class="npc-label">Kael · 流浪者</div>
+    </div>
+
+    <!-- Eira -->
+    <div class="npc hidden" id="npc-eira">
+      <div class="npc-portrait">🔮</div>
+      <div class="npc-label">Eira · 求知者</div>
+    </div>
+
+    <!-- Dialogue -->
+    <div id="dialog-box">
+      <div id="speaker-name"></div>
+      <div id="dialog-text"><span id="cursor-blink">|</span></div>
+    </div>
+
+    <!-- Choices -->
+    <div id="choices"></div>
+  </div>
+
+  <!-- End screen -->
+  <div id="end-overlay">
+    <div id="end-title"></div>
+    <div id="end-desc"></div>
+    <button id="end-restart" onclick="location.reload()">重 新 开 始</button>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════
+//  WEB AUDIO ENGINE — Synthesized Sound Effects
+// ═══════════════════════════════════════════════
+const AudioEngine = (() => {
+  let ctx = null;
+  let masterGain = null;
+  let muted = false;
+
+  function init() {
+    if (ctx) return;
+    try {
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      masterGain = ctx.createGain();
+      masterGain.gain.value = 0.5; // master volume at 50%
+      masterGain.connect(ctx.destination);
+    } catch (e) {
+      console.warn('Web Audio API not available:', e);
+    }
+  }
+
+  function ensureContext() {
+    init();
+    if (ctx && ctx.state === 'suspended') {
+      ctx.resume();
+    }
+    return ctx && masterGain;
+  }
+
+  function setMuted(m) {
+    muted = m;
+    if (masterGain) {
+      masterGain.gain.value = m ? 0 : 0.5;
+    }
+  }
+
+  function isMuted() { return muted; }
+
+  // ── Play a synthesized tone ──
+  // opts: { freq, type, duration, gain, ramp, detune }
+  function playTone(opts = {}) {
+    if (muted) return;
+    const g = ensureContext();
+    if (!g) return;
+
+    const now = ctx.currentTime;
+    const freq = opts.freq || 440;
+    const type = opts.type || 'sine';
+    const duration = opts.duration || 0.1;
+    const vol = opts.gain || 0.3;
+    const ramp = opts.ramp || 0.02;
+
+    const osc = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+
+    osc.type = type;
+    osc.frequency.value = freq;
+    if (opts.detune) osc.detune.value = opts.detune;
+
+    gainNode.gain.setValueAtTime(0, now);
+    gainNode.gain.linearRampToValueAtTime(vol, now + ramp);
+    gainNode.gain.linearRampToValueAtTime(0, now + duration);
+
+    osc.connect(gainNode);
+    gainNode.connect(masterGain);
+
+    osc.start(now);
+    osc.stop(now + duration + 0.01);
+  }
+
+  // ── Dialogue advance: soft two-note ascending blip ──
+  function playDialogueAdvance() {
+    if (muted) return;
+    const g = ensureContext();
+    if (!g) return;
+
+    const now = ctx.currentTime;
+    const vol = 0.12;
+
+    // Note 1: lower, softer
+    (() => {
+      const osc = ctx.createOscillator();
+      const gn = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 520;
+      gn.gain.setValueAtTime(0, now);
+      gn.gain.linearRampToValueAtTime(vol, now + 0.01);
+      gn.gain.linearRampToValueAtTime(0, now + 0.08);
+      osc.connect(gn);
+      gn.connect(masterGain);
+      osc.start(now);
+      osc.stop(now + 0.09);
+    })();
+
+    // Note 2: slightly higher
+    (() => {
+      const osc = ctx.createOscillator();
+      const gn = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 660;
+      gn.gain.setValueAtTime(0, now + 0.04);
+      gn.gain.linearRampToValueAtTime(vol * 0.9, now + 0.05);
+      gn.gain.linearRampToValueAtTime(0, now + 0.14);
+      osc.connect(gn);
+      gn.connect(masterGain);
+      osc.start(now + 0.04);
+      osc.stop(now + 0.15);
+    })();
+  }
+
+  // ── Choice confirmation: two-note ascending "confirm" chime ──
+  function playChoiceConfirm() {
+    if (muted) return;
+    const g = ensureContext();
+    if (!g) return;
+
+    const now = ctx.currentTime;
+    const vol = 0.18;
+
+    // Note 1
+    (() => {
+      const osc = ctx.createOscillator();
+      const gn = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.value = 440;
+      gn.gain.setValueAtTime(0, now);
+      gn.gain.linearRampToValueAtTime(vol, now + 0.015);
+      gn.gain.linearRampToValueAtTime(0, now + 0.13);
+      osc.connect(gn);
+      gn.connect(masterGain);
+      osc.start(now);
+      osc.stop(now + 0.14);
+    })();
+
+    // Note 2: higher confirming note
+    (() => {
+      const osc = ctx.createOscillator();
+      const gn = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.value = 587; // D5 — brighter confirmation
+      gn.gain.setValueAtTime(0, now + 0.06);
+      gn.gain.linearRampToValueAtTime(vol * 1.1, now + 0.075);
+      gn.gain.linearRampToValueAtTime(0, now + 0.22);
+      osc.connect(gn);
+      gn.connect(masterGain);
+      osc.start(now + 0.06);
+      osc.stop(now + 0.23);
+    })();
+
+    // Subtle harmonic sparkle
+    (() => {
+      const osc = ctx.createOscillator();
+      const gn = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 880;
+      gn.gain.setValueAtTime(0, now + 0.08);
+      gn.gain.linearRampToValueAtTime(vol * 0.5, now + 0.095);
+      gn.gain.linearRampToValueAtTime(0, now + 0.25);
+      osc.connect(gn);
+      gn.connect(masterGain);
+      osc.start(now + 0.08);
+      osc.stop(now + 0.26);
+    })();
+  }
+
+  // ── Game start: warm rising chord ──
+  function playGameStart() {
+    if (muted) return;
+    const g = ensureContext();
+    if (!g) return;
+
+    const now = ctx.currentTime;
+    const vol = 0.15;
+    const notes = [261.6, 329.6, 392.0]; // C4, E4, G4 — C major chord
+
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gn = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      const startT = now + i * 0.1;
+      gn.gain.setValueAtTime(0, startT);
+      gn.gain.linearRampToValueAtTime(vol, startT + 0.04);
+      gn.gain.setValueAtTime(vol, startT + 0.5);
+      gn.gain.linearRampToValueAtTime(0, startT + 0.9);
+      osc.connect(gn);
+      gn.connect(masterGain);
+      osc.start(startT);
+      osc.stop(startT + 1.0);
+    });
+  }
+
+  // ── Ending reveal: deeper resonant chord ──
+  function playEndingReveal() {
+    if (muted) return;
+    const g = ensureContext();
+    if (!g) return;
+
+    const now = ctx.currentTime;
+    const vol = 0.14;
+    const notes = [196, 246.94, 293.66]; // G3, B3, D4 — G major, lower
+
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gn = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      const startT = now + i * 0.15;
+      gn.gain.setValueAtTime(0, startT);
+      gn.gain.linearRampToValueAtTime(vol, startT + 0.06);
+      gn.gain.setValueAtTime(vol, startT + 0.6);
+      gn.gain.linearRampToValueAtTime(0, startT + 1.2);
+      osc.connect(gn);
+      gn.connect(masterGain);
+      osc.start(startT);
+      osc.stop(startT + 1.3);
+    });
+  }
+
+  // ── Fireplace ambient: subtle noise crackle ──
+  let fireplaceNode = null;
+  function startFireplaceAmbient() {
+    if (muted) return;
+    const g = ensureContext();
+    if (!g || fireplaceNode) return;
+
+    // Create a noise source and shape it for crackle
+    const bufferSize = ctx.sampleRate * 2;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * 0.08;
+    }
+
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+    noise.loop = true;
+
+    const bandpass = ctx.createBiquadFilter();
+    bandpass.type = 'bandpass';
+    bandpass.frequency.value = 800;
+    bandpass.Q.value = 0.5;
+
+    // Create irregular gain envelope for crackle effect
+    const gainNode = ctx.createGain();
+    gainNode.gain.value = 0.02;
+    noise.connect(bandpass);
+    bandpass.connect(gainNode);
+    gainNode.connect(masterGain);
+    noise.start();
+
+    fireplaceNode = { noise, bandpass, gain: gainNode };
+  }
+
+  function stopFireplaceAmbient() {
+    if (fireplaceNode) {
+      try { fireplaceNode.noise.stop(); } catch(e) {}
+      fireplaceNode = null;
+    }
+  }
+
+  return {
+    init,
+    playDialogueAdvance,
+    playChoiceConfirm,
+    playGameStart,
+    playEndingReveal,
+    startFireplaceAmbient,
+    stopFireplaceAmbient,
+    setMuted,
+    isMuted,
+    get ctx() { return ctx; },
+  };
+})();
+
+// ═══════════════════════════════════════
+//  GAME STATE
+// ═══════════════════════════════════════
+const DIALOGUE = {
+  // ===== LENA INTRO =====
+  lena_welcome: {
+    speaker: 'lena',
+    text: '欢迎来到"余烬酒馆"，旅行者。你看起来走了很远的路。炉火还暖着，坐下来歇歇吧。',
+    choices: [
+      { text: '「友善地」谢谢你。这片土地发生了什么？', next: 'lena_about' },
+      { text: '「警惕地」我只是路过。不需要麻烦你。', next: 'lena_room' }
+    ]
+  },
+
+  lena_about: {
+    speaker: 'lena',
+    text: '（擦着手中的杯子，目光投向窗外）战火烧了三年。北边的路断了，东边的森林里有比野兽更可怕的东西。这间酒馆，是方圆五十里唯一还亮着灯的地方。',
+    choices: [
+      { text: '你一个人在这里？不害怕吗？', next: 'lena_son' },
+      { text: '我想找一块古老的石碑。你听说过吗？', next: 'lena_stones' }
+    ]
+  },
+
+  lena_room: {
+    speaker: 'lena',
+    text: '（微微一笑）不麻烦。这里很久没有新面孔了。坐下来喝杯麦酒吧——你可能需要多留几天。这地方最近不太平。',
+    choices: [
+      { text: '"最近不太平"是什么意思？', next: 'lena_about' },
+      { text: '好吧。但我不会待太久。', next: 'lena_son' }
+    ]
+  },
+
+  lena_son: {
+    speaker: 'lena',
+    text: '（手微微一顿，火光在眼中闪烁）曾经不是一个人。我儿子……他活着的时候一直守着这里的炉火。那是战争之前的事了。现在，我有这家酒馆就够了。',
+    choices: [
+      { text: '我很抱歉。请继续说吧。', next: 'lena_stones' },
+      { text: '（沉默点头）', next: 'lena_stones' }
+    ]
+  },
+
+  lena_stones: {
+    speaker: 'lena',
+    text: '石碑……你是说东边废墟里的那些？不少人来找过。但那个坐在角落里的家伙——（朝Kael的方向点了点头）——他可能知道更多。他上周刚从那边回来。少了一条胳膊的人，总有不少故事。',
+    choices: [
+      { text: '让我去和他谈谈。', next: 'meet_kael_a' },
+      { text: '先告诉我关于你的事。为什么要守着这里？', next: 'lena_lore' }
+    ]
+  },
+
+  lena_lore: {
+    speaker: 'lena',
+    text: '（放下杯子，双手撑在吧台上）因为这间酒馆建在一个特殊的地方。有人说我们脚下有某种力量流过。我不信那些迷信。但每次有旅人走进来，我就知道——他们不是偶然来的。你也不是。',
+    choices: [
+      { text: '我明白了。让我去和那位骑士谈谈。', next: 'meet_kael_a' }
+    ]
+  },
+
+  // ===== KAEL ENTERS =====
+  meet_kael_a: {
+    speaker: 'kael',
+    text: '（抬起头，独臂端起酒杯）新面孔。我一眼就能认出来——你眼睛里还有希望。（冷笑了一声）那东西在这片土地上留不了多久。',
+    choices: [
+      { text: '你是谁？为什么只剩一只手？', next: 'kael_intro' },
+      { text: '我听说你知道东边废墟的路。', next: 'kael_ruins' }
+    ]
+  },
+
+  kael_intro: {
+    speaker: 'kael',
+    text: '（用仅剩的左手指了指胸口的旧徽章）凯尔·瓦伦。曾经是国王的骑士，现在只是个收钱办事的。二十年的服役让我失去的远不止一条手臂。忠诚？正义？都是骗小孩的故事。',
+    choices: [
+      { text: '听起来你经历了很多。东边的废墟安全吗？', next: 'kael_ruins' },
+      { text: '我不需要你的哲学课。路怎么走？', next: 'kael_angry' }
+    ]
+  },
+
+  kael_angry: {
+    speaker: 'kael',
+    text: '（眼神冷下来）急什么？急着去送死？我在那片废墟里丢了一条胳膊和三个兄弟。你想要地图？可以——但先告诉我，你为什么非要去不可？',
+    choices: [
+      { text: '我在找答案。一个很重要的人失踪了。', next: 'kael_ruins' },
+      { text: '这不关你的事。', next: 'kael_ruins' }
+    ]
+  },
+
+  kael_ruins: {
+    speaker: 'kael',
+    text: '（沉默片刻，端起酒杯一饮而尽）东边十里，翻过枯骨岭，有一片被黑藤覆盖的石头。你要找的石碑就在那里。但没人活着回来过——除了我。而我付出的代价你也看到了。',
+    choices: [
+      { text: '我需要你的帮助。愿意做我的向导吗？', next: 'kael_guide' },
+      { text: '（注意到Eira走了过来）那是谁？', next: 'eira_enter' }
+    ]
+  },
+
+  kael_guide: {
+    speaker: 'kael',
+    text: '（盯着你看了一会儿，嘴角微微上扬）你让我想起了……某个人。很久以前我没能保护好的一个人。（叹了口气）好。一千金币。先付一半。如果我死在里面，剩下的寄给这间酒馆的老板娘。',
+    choices: [
+      { text: '成交。我们什么时候出发？', next: 'eira_enter' },
+      { text: '等等，为什么钱要寄给Lena？', next: 'kael_lena' }
+    ]
+  },
+
+  kael_lena: {
+    speaker: 'kael',
+    text: '（眼神微微移开，声音低了下来）她儿子……曾经是我手下最好的兵。我欠她的。就这些。现在，那个戴兜帽的姑娘一直在偷听我们——你想先处理她吗？',
+    choices: [
+      { text: '让她过来吧。三个人的智慧总比一个人强。', next: 'eira_enter' }
+    ]
+  },
+
+  // ===== EIRA APPROACHES =====
+  eira_enter: {
+    speaker: 'eira',
+    text: '（从角落走近，手里攥着一本厚重的笔记）请原谅我的冒昧——我听到了你们在谈论废墟。你也感觉到了吧？地底的脉搏。那些石碑在苏醒。',
+    choices: [
+      { text: '你是谁？你怎么知道这些？', next: 'eira_intro' },
+      { text: '石碑在苏醒？什么意思？', next: 'eira_details' }
+    ]
+  },
+
+  eira_intro: {
+    speaker: 'eira',
+    text: '我是艾拉。一名求知者——或者说，一个"麻烦制造者"，这是凯尔对我的称呼。（瞥了一眼Kael，后者翻了个白眼）我的导师花了三十年研究这片土地的能量流动。他三年前进入了那座废墟——再也没有出来。',
+    choices: [
+      { text: '你的导师也在找石碑？', next: 'eira_details' },
+      { text: '所以你想让我们帮你找到他？', next: 'eira_details' }
+    ]
+  },
+
+  eira_details: {
+    speaker: 'eira',
+    text: '（翻开笔记本，手指划过密密麻麻的符文和星图）古人把讯息刻在石碑里，藏在能量线的交汇点上。我画了三年的地图——（突然转头看向Lena）——而这个酒馆，正好处在所有能量线的中心。这不是巧合。',
+    choices: [
+      { text: 'Lena知道这件事吗？', next: 'eira_lena' },
+      { text: '你需要什么帮助？', next: 'eira_help' }
+    ]
+  },
+
+  eira_lena: {
+    speaker: 'eira',
+    text: '（压低声音）我试探过她。她不肯承认。但每次我提到她儿子，她就会避开话题。我觉得她知道些什么。关于这座酒馆之下的东西。关于他的死。',
+    choices: [
+      { text: '那你打算怎么办？', next: 'eira_help' }
+    ]
+  },
+
+  eira_help: {
+    speaker: 'eira',
+    text: '三个人一起去废墟。凯尔知道路，我认得符文，而你——（直视你的眼睛）——你身上有一种我不知道怎么形容的特质。你来到这里不是偶然的。你愿意加入我们吗？',
+    choices: [
+      { text: '「坚定地」我加入。我们一起去。', next: 'final_choice' },
+      { text: '我需要先和Lena商量。', next: 'final_choice' }
+    ]
+  },
+
+  // ===== FINAL CONVERGENCE =====
+  final_choice: {
+    speaker: 'lena',
+    text: '（从吧台后面走出来，站在所有人中间）等一下。如果你们要去废墟——我有东西要给你们。（从脖子上取下一条旧项链，上面挂着一枚暗红色的石头）这是我儿子的。他说这是废墟里找到的。也许对你们有用。',
+    choices: [
+      { text: '「接过项链」谢谢你，Lena。我们会回来的。', next: 'ending_good', ending: 'good' },
+      { text: '「对Kael说」我们走最安全的路线，我信任你的判断。', next: 'ending_neutral', ending: 'neutral' },
+      { text: '「对Eira说」我们一起破译符文。找到你导师的真相。', next: 'ending_truth', ending: 'truth' }
+    ]
+  },
+
+  // ===== ENDINGS =====
+  ending_good: {
+    speaker: 'lena',
+    text: '（微笑，眼中含泪）照顾好彼此。炉火会一直亮着——等你们回来。',
+    choices: [],
+    ending: {
+      title: '希望的余烬',
+      desc: '你接过Lena的项链，感受到石头的温度——那不是普通的石头，而是一枚记忆的碎片。三人结伴走出酒馆，东方的天空开始泛白。前方的路漫长而危险，但没有人回头。\n\n酒馆的炉火在身后越来越远，却在心中越来越亮。'
+    }
+  },
+  ending_neutral: {
+    speaker: 'kael',
+    text: '（点了点头，利落地站起身）明智的选择。活下来的人才会讲故事。我承诺——这一次不会有人再离开。',
+    choices: [],
+    ending: {
+      title: '生存之道',
+      desc: '你选择依靠经验和谨慎。凯尔带着你们避开最危险的区域，沿着废弃的古道绕行。虽然多花了两天时间，但你们安全抵达了废墟边缘。\n\n有时候最聪明的人不是冲在最前面的那个——而是知道怎么活着走到最后的人。'
+    }
+  },
+  ending_truth: {
+    speaker: 'eira',
+    text: '（眼睛亮了起来）太好了！一起解开这些谜题——为了我的导师，也为了这片土地。知识不是诅咒，无知才是。',
+    choices: [],
+    ending: {
+      title: '知识的代价',
+      desc: '你和艾拉并肩走进废墟深处。当她解读出第一块石碑上的符文时，你明白了——这些石头承载的不是预言，而是记忆。艾拉的导师还活着，被困在石碑之间。\n\n被真理眷顾的人，也注定被真理囚禁。但你选择面对——不论代价是什么。'
+    }
+  }
+};
+
+// ═══════════════════════════════════════
+//  GAME ENGINE
+// ═══════════════════════════════════════
+const $ = (s) => document.querySelector(s);
+
+const el = {
+  npcLena: $('#npc-lena'),
+  npcKael: $('#npc-kael'),
+  npcEira: $('#npc-eira'),
+  speakerName: $('#speaker-name'),
+  dialogText: $('#dialog-text'),
+  choices: $('#choices'),
+  titleOverlay: $('#title-overlay'),
+  endOverlay: $('#end-overlay'),
+  endTitle: $('#end-title'),
+  endDesc: $('#end-desc'),
+  audioToggle: $('#audio-toggle'),
+};
+
+const NPC_COLORS = {
+  lena: 'var(--lena-color)',
+  kael: 'var(--kael-color)',
+  eira: 'var(--eira-color)',
+};
+
+const NPC_ELEMS = {
+  lena: el.npcLena,
+  kael: el.npcKael,
+  eira: el.npcEira,
+};
+
+let isTyping = false;
+let typeTimer = null;
+let currentNode = null;
+let visitedNodes = new Set();
+
+// ── Typewriter ──
+function typeText(text, callback) {
+  const elText = el.dialogText;
+  elText.innerHTML = '';
+  isTyping = true;
+
+  let i = 0;
+  function tick() {
+    if (i < text.length) {
+      elText.textContent += text[i];
+      i++;
+      // Variable speed: punctuation pauses longer
+      const ch = text[i - 1];
+      const delay = (ch === '。' || ch === '？' || ch === '！' || ch === '…') ? 180
+        : (ch === '，' || ch === '、' || ch === '；') ? 100
+        : (ch === '（' || ch === '）') ? 60
+        : 35;
+      typeTimer = setTimeout(tick, delay);
+    } else {
+      // Append blink cursor
+      const span = document.createElement('span');
+      span.id = 'cursor-blink';
+      span.textContent = '|';
+      elText.appendChild(span);
+      isTyping = false;
+      // Play dialogue advance sound when text finishes
+      AudioEngine.playDialogueAdvance();
+      if (callback) callback();
+    }
+  }
+  tick();
+}
+
+function skipTypewriter() {
+  if (!isTyping || !currentNode) return;
+  clearTimeout(typeTimer);
+  const node = DIALOGUE[currentNode];
+  el.dialogText.textContent = node.text;
+  const span = document.createElement('span');
+  span.id = 'cursor-blink';
+  span.textContent = '|';
+  el.dialogText.appendChild(span);
+  isTyping = false;
+  // Play dialogue advance when skipping
+  AudioEngine.playDialogueAdvance();
+  renderChoices(node);
+}
+
+// ── Show NPCs ──
+function showNPCs(speaker) {
+  // Decide which NPCs are visible
+  let visible = new Set();
+
+  if (currentNode === 'lena_welcome' || currentNode === 'lena_about' || 
+      currentNode === 'lena_room' || currentNode === 'lena_son' ||
+      currentNode === 'lena_stones' || currentNode === 'lena_lore') {
+    visible.add('lena');
+  } else if (currentNode && currentNode.startsWith('meet_kael') || 
+             currentNode === 'kael_intro' || currentNode === 'kael_angry' ||
+             currentNode === 'kael_ruins' || currentNode === 'kael_guide' ||
+             currentNode === 'kael_lena') {
+    visible.add('lena');
+    visible.add('kael');
+  } else if (currentNode && currentNode.startsWith('eira')) {
+    visible.add('lena');
+    visible.add('kael');
+    visible.add('eira');
+  } else if (currentNode === 'final_choice') {
+    visible.add('lena');
+    visible.add('kael');
+    visible.add('eira');
+  } else if (currentNode && currentNode.startsWith('ending')) {
+    visible.add('lena');
+    visible.add('kael');
+    visible.add('eira');
+  }
+
+  // Update NPC visibility and active state
+  Object.entries(NPC_ELEMS).forEach(([name, elem]) => {
+    if (visible.has(name)) {
+      elem.classList.remove('hidden');
+      if (name === speaker) {
+        elem.classList.add('active');
+        elem.classList.remove('inactive');
+      } else {
+        elem.classList.remove('active');
+        elem.classList.add('inactive');
+      }
+    } else {
+      elem.classList.add('hidden');
+    }
+  });
+}
+
+// ── Render Node ──
+function renderChoices(node) {
+  el.choices.innerHTML = '';
+  if (!node.choices || node.choices.length === 0) {
+    // Ending
+    if (node.ending) {
+      showEnding(node.ending);
+    }
+    return;
+  }
+  node.choices.forEach((choice, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'choice-btn';
+    btn.textContent = choice.text;
+    btn.addEventListener('click', () => {
+      // Play confirmation sound on choice click
+      AudioEngine.playChoiceConfirm();
+      visitedNodes.add(currentNode);
+      navigateTo(choice.next);
+    });
+    el.choices.appendChild(btn);
+  });
+}
+
+function navigateTo(nodeName) {
+  currentNode = nodeName;
+  const node = DIALOGUE[nodeName];
+  if (!node) return;
+
+  el.choices.innerHTML = '';
+  el.speakerName.textContent = node.speaker;
+  showNPCs(node.speaker);
+
+  // Brief delay for NPC transition
+  setTimeout(() => {
+    typeText(node.text, () => {
+      renderChoices(node);
+    });
+  }, 150);
+}
+
+// ── Ending ──
+function showEnding(ending) {
+  AudioEngine.playEndingReveal();
+  el.endTitle.textContent = ending.title;
+  el.endDesc.textContent = ending.desc;
+  el.endOverlay.classList.add('visible');
+}
+
+// ── Particles ──
+function spawnParticle() {
+  const p = document.createElement('div');
+  p.className = 'particle';
+  p.style.left = (Math.random() * 60 + 20) + '%';
+  p.style.bottom = (Math.random() * 20 + 30) + '%';
+  p.style.width = p.style.height = (Math.random() * 3 + 1) + 'px';
+  p.style.animationDuration = (Math.random() * 3 + 2) + 's';
+  $('#scene').appendChild(p);
+  setTimeout(() => p.remove(), 5000);
+}
+
+// ── Start ──
+function startGame() {
+  // Initialize audio on first user interaction (browser autoplay policy)
+  AudioEngine.init();
+  AudioEngine.playGameStart();
+  AudioEngine.startFireplaceAmbient();
+
+  el.titleOverlay.classList.add('hidden');
+  el.endOverlay.classList.remove('visible');
+  currentNode = 'lena_welcome';
+  visitedNodes.clear();
+  navigateTo('lena_welcome');
+}
+
+// ── Audio toggle ──
+el.audioToggle.addEventListener('click', () => {
+  const muted = !AudioEngine.isMuted();
+  AudioEngine.setMuted(muted);
+  el.audioToggle.textContent = muted ? '🔇' : '🔊';
+  el.audioToggle.classList.toggle('muted', muted);
+
+  if (muted) {
+    AudioEngine.stopFireplaceAmbient();
+  } else if (currentNode) {
+    AudioEngine.startFireplaceAmbient();
+  }
+});
+
+// ── Click-to-skip ──
+$('#game').addEventListener('click', (e) => {
+  // Don't skip if clicking on buttons
+  if (e.target.closest('.choice-btn') || e.target.closest('#title-start') || 
+      e.target.closest('#end-restart') || e.target.closest('#title-overlay') ||
+      e.target.closest('#audio-toggle')) return;
+  if (isTyping) {
+    skipTypewriter();
+  }
+});
+
+// ── Background particles ──
+setInterval(spawnParticle, 800);
+
+// ── Title screen ENTER key ──
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !el.titleOverlay.classList.contains('hidden')) {
+    startGame();
+  }
+});
+</script>
+</body>
+</html>

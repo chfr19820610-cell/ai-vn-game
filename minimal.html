@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Minimal VN</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #111; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<script type="module">
+import kaboom from "https://unpkg.com/kaboom@3000.0.1/dist/kaboom.mjs";
+
+const k = kaboom({
+  width: 800,
+  height: 600,
+  background: [20, 20, 40],
+  crisp: true,
+});
+
+// Verification flag
+window.__gameClicked = false;
+
+k.scene("game", () => {
+  // ── NPC ──
+  k.add([
+    k.rect(80, 120),
+    k.color(220, 120, 120),
+    k.pos(k.width() / 2 - 40, 80),
+    k.area(),
+  ]);
+
+  k.add([
+    k.text("🧑", { size: 48 }),
+    k.pos(k.width() / 2 - 24, 100),
+  ]);
+
+  k.add([
+    k.text("神秘人", { size: 14 }),
+    k.color(200, 200, 200),
+    k.pos(k.width() / 2 - 28, 210),
+  ]);
+
+  // ── 对话框 ──
+  k.add([
+    k.rect(k.width() - 60, 100),
+    k.color(0, 0, 0, 220),
+    k.pos(30, k.height() - 180),
+    k.outline(2, k.Color.fromArray([255, 255, 255])),
+  ]);
+
+  k.add([
+    k.text("你好，旅行者。准备好冒险了吗？", { size: 22 }),
+    k.color(255, 255, 255),
+    k.pos(50, k.height() - 160),
+  ]);
+
+  // ── 按钮 ──
+  const btn = k.add([
+    k.rect(220, 48),
+    k.color(80, 180, 80),
+    k.pos(k.width() / 2 - 110, k.height() - 65),
+    k.area(),
+    k.outline(2, k.Color.fromArray([255, 255, 255])),
+    "button",
+  ]);
+
+  k.add([
+    k.text("👉 准备好了！", { size: 20 }),
+    k.color(255, 255, 255),
+    k.pos(k.width() / 2 - 58, k.height() - 53),
+  ]);
+
+  // ── 点击 → "完" ──
+  let done = false;
+  const doClick = () => {
+    if (done) return;
+    done = true;
+    window.__gameClicked = true;
+    k.add([
+      k.text("完", { size: 72 }),
+      k.color(255, 215, 0),
+      k.pos(k.width() / 2 - 36, k.height() / 2 - 50),
+      k.z(999),
+    ]);
+  };
+
+  btn.onClick(doClick);
+
+  // Expose for programmatic testing
+  window.__clickGameButton = doClick;
+});
+
+k.go("game");
+</script>
+</body>
+</html>

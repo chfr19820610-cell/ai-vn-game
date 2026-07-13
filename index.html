@@ -160,62 +160,58 @@ function ovChoice(id, x, y, w, html, size, textColor, bgColor, outlineColor) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Playwright Click Compatibility Fix
+// Click Shim — forward DOM overlay clicks to Kaboom canvas
+// Overlay elements (.ov-text, .ov-choice) have pointer-events:auto and block
+// clicks from reaching the canvas where Kaboom's onClick handlers live.
+// This shim forwards mousedown/click to the canvas AND adds DOM fallbacks.
 // ═══════════════════════════════════════════════════════════════════════════
 (function() {
   var canvas = document.querySelector('canvas');
   if (!canvas) return;
-  console.log('[v2-story] canvas found, installing click shim');
+  console.log('[click-shim] installing');
 
-  function synthMouse(type, src) {
-    return new MouseEvent(type, {
-      button: src.button, buttons: src.buttons,
-      clientX: src.clientX, clientY: src.clientY,
-      offsetX: src.offsetX, offsetY: src.offsetY,
-      screenX: src.screenX, screenY: src.screenY,
-      movementX: 0, movementY: 0,
-      bubbles: true, cancelable: true
-    });
+  // Dispatch a synthetic MouseEvent on the canvas
+  function fireCanvas(type, src) {
+    canvas.dispatchEvent(new MouseEvent(type, {
+      bubbles: true, cancelable: true, view: window,
+      button: (src && src.button) || 0,
+      buttons: (src && src.buttons) || (type === 'mousedown' ? 1 : 0),
+      clientX: (src && src.clientX) || 0,
+      clientY: (src && src.clientY) || 0,
+      screenX: (src && src.screenX) || 0,
+      screenY: (src && src.screenY) || 0
+    }));
   }
 
-  canvas.addEventListener('mousedown', function(e) {
-    canvas.dispatchEvent(synthMouse('mousemove', e));
-  }, true);
+  // Forward clicks from overlay to canvas (so Kaboom onClick works on NPCs)
+  var overlay = document.getElementById('overlay');
+  if (overlay) {
+    overlay.addEventListener('click', function(e) {
+      var el = e.target;
+      // If the click is on a .ov-choice, extract choice index and fire
+      if (el.classList.contains('ov-choice')) {
+        var choiceIdx = parseInt((el.id || '').replace('ov-choice-txt-', ''), 10);
+        if (!isNaN(choiceIdx) && window.__clickChoice) {
+          window.__clickChoice(choiceIdx);
+        }
+        return;
+      }
+      // If the click is on an NPC name label, extract NPC index and fire
+      if (el.id && el.id.indexOf('ov-npc-name-') === 0) {
+        var npcIdx = parseInt(el.id.replace('ov-npc-name-', ''), 10);
+        if (!isNaN(npcIdx) && window.__clickNpc) {
+          window.__clickNpc(npcIdx);
+        }
+        return;
+      }
+      // Forward to canvas for Kaboom hit detection (NPC body rects, buttons)
+      fireCanvas('mousedown', e);
+      fireCanvas('mouseup', e);
+      fireCanvas('click', e);
+    }, true);
+  }
 
-  canvas.addEventListener('pointerdown', function(e) {
-    canvas.dispatchEvent(new PointerEvent('pointermove', {
-      pointerId: e.pointerId, pointerType: e.pointerType,
-      clientX: e.clientX, clientY: e.clientY,
-      bubbles: true, cancelable: true
-    }));
-  }, true);
-
-  canvas.addEventListener('mouseup', function(e) {
-    var pressed = (typeof isMousePressed === 'function') && isMousePressed();
-    if (pressed) {
-      e.stopImmediatePropagation();
-      requestAnimationFrame(function() {
-        canvas.dispatchEvent(synthMouse('mouseup', e));
-      });
-    }
-  }, true);
-
-  canvas.addEventListener('pointerup', function(e) {
-    var pressed = (typeof isMousePressed === 'function') && isMousePressed();
-    if (pressed) {
-      e.stopImmediatePropagation();
-      requestAnimationFrame(function() {
-        canvas.dispatchEvent(new PointerEvent('pointerup', {
-          pointerId: e.pointerId, pointerType: e.pointerType,
-          clientX: e.clientX, clientY: e.clientY,
-          button: e.button, buttons: e.buttons,
-          bubbles: true, cancelable: true
-        }));
-      });
-    }
-  }, true);
-
-  console.log('[v2-story] click shim installed');
+  console.log('[click-shim] installed');
 })();
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -898,7 +894,7 @@ function showChoices(choices) {
     var cx = startX + i * (boxW + 10);
     // Kaboom rect for hit detection
     var rectId = 'choice-rect-' + i;
-    var rect = add([
+    var rectGo = add([
       rect(boxW, 42, { radius: 8 }),
       color(50, 60, 100),
       pos(cx, 525),
@@ -906,7 +902,7 @@ function showChoices(choices) {
       outline(2, rgb(150, 180, 255)),
       rectId
     ]);
-    _choiceRects.push({ id: rectId, go: rect, idx: i });
+    _choiceRects.push({ id: rectId, go: rectGo, idx: i });
 
     // DOM text overlay for choice text
     var html = '<b>' + labels[i] + '.</b> ' + choices[i].text;

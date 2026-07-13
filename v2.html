@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=800, initial-scale=1.0">
+<title>VN v2 - Three NPCs</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a1a;
+    display: flex; justify-content: center; align-items: center;
+    height: 100vh; overflow: hidden;
+    font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  }
+  canvas { display: block; border-radius: 8px; }
+</style>
+</head>
+<body>
+<script type="module">
+import kaboom from "https://unpkg.com/kaboom@3000.0.1/dist/kaboom.mjs";
+
+const k = kaboom({
+  width: 800,
+  height: 600,
+  background: [15, 15, 35],
+  crisp: true,
+});
+
+// ──────── Playwright Click Compatibility Fix ────────
+// For Kaboom 3000 module mode: we need access to mouse state.
+// Save a global ref to the kaboom instance's mouse API.
+window.__k = k;
+(function() {
+  const canvas = document.querySelector('canvas');
+  if (!canvas) return;
+  canvas.addEventListener('mousedown', function(e) {
+    canvas.dispatchEvent(new MouseEvent('mousemove', {
+      clientX: e.clientX, clientY: e.clientY,
+      offsetX: e.offsetX, offsetY: e.offsetY,
+      movementX: 0, movementY: 0, bubbles: true
+    }));
+  }, true);
+  canvas.addEventListener('mouseup', function(e) {
+    // Kaboom 3000 mouse check: isMousePressed() returns true when
+    // mousedown happened this frame and mouseup hasn't been processed.
+    const km = window.__k;
+    if (km && km.isMousePressed && km.isMousePressed()) {
+      e.stopImmediatePropagation();
+      requestAnimationFrame(function() {
+        const mu = new MouseEvent('mouseup', {
+          button: e.button,
+          clientX: e.clientX, clientY: e.clientY,
+          offsetX: e.offsetX, offsetY: e.offsetY,
+          bubbles: true
+        });
+        canvas.dispatchEvent(mu);
+      });
+    }
+  }, true);
+})();
+
+// ──────── Game Data ────────
+const NPC_DATA = [
+  {
+    id: 0,
+    name: "长者 Kael",
+    emoji: "🧙",
+    color: [180, 140, 80],
+    desc: "Ancient shrine keeper",
+    pos: [130, 110],
+    dialogues: {
+      r1: [
+        "远道而来的旅人啊，神殿的封印正在消退。",
+        "每一轮明月升起，黑暗便在深处躁动一分。",
+        "你……能感觉到吗？空气中那股不安的气息。"
+      ],
+      r2a: [
+        "千年之前，七位贤者用生命铸成封印，",
+        "将混沌之主囚禁于神殿深处。",
+        "如今最后一道封印正在崩裂，时间不多了。"
+      ],
+      r2b: [
+        "勇敢的孩子。你必须找到三块水晶碎片的碎片。",
+        "它们散落在禁林、深渊裂隙与遗忘之塔。",
+        "但每一条路都有远古守护者在等待着你。"
+      ]
+    },
+    choices: {
+      r1: [
+        { text: "神殿有什么来历？", branch: "a" },
+        { text: "我能帮上什么忙？", branch: "b" }
+      ]
+    }
+  },
+  {
+    id: 1,
+    name: "守卫 Thorne",
+    emoji: "🛡️",
+    color: [100, 140, 200],
+    desc: "Gate captain",
+    pos: [400, 110],
+    dialogues: {
+      r1: [
+        "站住。没有长者的许可，谁也不准通过。",
+        "表明你的来意，陌生人。",
+        "我见过太多心怀不轨之人想混进神殿。"
+      ],
+      r2a: [
+        "哼，难得。你走的是一条光荣之路。",
+        "前方的石桥布有机关——只踩发蓝光的石板。",
+        "愿你的剑锋永远锐利，旅人。"
+      ],
+      r2b: [
+        "好奇心在这些地方杀的可不只是猫。",
+        "行吧，你可以过去。但过了桥之后，",
+        "别碰任何东西。我可不会来救你。"
+      ]
+    },
+    choices: {
+      r1: [
+        { text: "我要修复神殿封印。", branch: "a" },
+        { text: "只是路过，让我过去。", branch: "b" }
+      ]
+    }
+  },
+  {
+    id: 2,
+    name: "旅人 Lyra",
+    emoji: "🧭",
+    color: [160, 100, 200],
+    desc: "Mysterious wanderer",
+    pos: [670, 110],
+    dialogues: {
+      r1: [
+        "嘘……你听到了吗？",
+        "这片森林记得每一个走过它的人。",
+        "有些人……再也没有离开过。"
+      ],
+      r2a: [
+        "它们在说「背叛」。七位贤者中，",
+        "有一位并非心甘情愿献出生命。",
+        "他的影子至今仍在林间游荡，寻找着什么……"
+      ],
+      r2b: [
+        "今天黎明，一个披斗篷的人影经过。",
+        "他在老橡树上刻下了奇怪的符文。",
+        "上面写着：「钥匙从未被毁——它被藏起来了。」"
+      ]
+    },
+    choices: {
+      r1: [
+        { text: "低语在说什么？", branch: "a" },
+        { text: "你见过其他人吗？", branch: "b" }
+      ]
+    }
+  }
+];
+
+// ──────── Game State ────────
+const state = {
+  activeNpc: null,
+  typing: false,
+  typingTimer: null,
+  showChoices: false,
+  npcDone: [false, false, false],
+  npcRound: [0, 0, 0],       // 0 = round1, 1 = round2
+  npcChoice: [null, null, null], // 'a' or 'b'
+  allDone: false,
+};
+
+window.__gameState = state; // for Playwright verification
+
+// ──────── Scene ────────
+k.scene("game", () => {
+  // Background gradient layers
+  k.add([k.rect(800, 600), k.color(15, 15, 35)]);
+
+  // Ground
+  k.add([k.rect(800, 300), k.color(25, 40, 25), k.pos(0, 400)]);
+
+  // Title
+  k.add([
+    k.text("⚔️ 神殿之路 · 序幕 ⚔️", { size: 20 }),
+    k.color(220, 200, 140),
+    k.pos(k.width() / 2, 25),
+    k.anchor("center"),
+  ]);
+
+  // ── NPC containers ──
+  const npcObjs = [];
+
+  NPC_DATA.forEach((data, idx) => {
+    const [nx, ny] = data.pos;
+
+    // NPC body
+    const body = k.add([
+      k.rect(64, 90, { radius: 8 }),
+      k.color(...data.color),
+      k.pos(nx, ny),
+      k.anchor("center"),
+      k.area(),
+      k.z(2),
+      `npc-${idx}`,
+    ]);
+
+    // Emoji
+    const emoji = k.add([
+      k.text(data.emoji, { size: 32 }),
+      k.pos(nx, ny - 5),
+      k.anchor("center"),
+      k.z(3),
+    ]);
+
+    // Name label
+    const nameTag = k.add([
+      k.text(data.name, { size: 13 }),
+      k.color(255, 255, 255),
+      k.pos(nx, ny + 55),
+      k.anchor("center"),
+      k.z(3),
+    ]);
+
+    // Desc label
+    const descTag = k.add([
+      k.text(data.desc, { size: 10 }),
+      k.color(180, 180, 180),
+      k.pos(nx, ny + 70),
+      k.anchor("center"),
+      k.z(3),
+    ]);
+
+    // Done badge (hidden initially)
+    const doneBadge = k.add([
+      k.text("✓", { size: 18 }),
+      k.color(100, 255, 100),
+      k.pos(nx + 28, ny - 40),
+      k.anchor("center"),
+      k.z(5),
+      k.opacity(0),
+    ]);
+
+    // Glow ring (hidden initially, shown when active)
+    const glow = k.add([
+      k.rect(72, 98, { radius: 10 }),
+      k.color(...data.color),
+      k.opacity(0),
+      k.pos(nx, ny),
+      k.anchor("center"),
+      k.z(1),
+    ]);
+
+    npcObjs.push({ body, emoji, nameTag, descTag, doneBadge, glow });
+  });
+
+  // ── Dialog Box ──
+  const dialogBox = k.add([
+    k.rect(740, 150, { radius: 10 }),
+    k.color(0, 0, 0),
+    k.opacity(0.88),
+    k.pos(30, 430),
+    k.outline(2, k.Color.fromArray([200, 200, 200])),
+    k.z(10),
+  ]);
+
+  const dialogText = k.add([
+    k.text("点击一位角色开始对话", {
+      size: 18,
+    }),
+    k.color(255, 255, 255),
+    k.pos(50, 445),
+    k.z(11),
+  ]);
+
+  // ── Choice Buttons ──
+  let choiceBtn1 = null, choiceBtn2 = null;
+  let choiceText1 = null, choiceText2 = null;
+
+  function clearChoices() {
+    if (choiceBtn1) { choiceBtn1.destroy(); choiceBtn1 = null; }
+    if (choiceBtn2) { choiceBtn2.destroy(); choiceBtn2 = null; }
+    if (choiceText1) { choiceText1.destroy(); choiceText1 = null; }
+    if (choiceText2) { choiceText2.destroy(); choiceText2 = null; }
+    state.showChoices = false;
+  }
+
+  function showChoices(choices) {
+    clearChoices();
+    state.showChoices = true;
+
+    // Button 1
+    choiceBtn1 = k.add([
+      k.rect(340, 42, { radius: 8 }),
+      k.color(50, 60, 100),
+      k.pos(40, 525),
+      k.area(),
+      k.outline(2, k.Color.fromArray([150, 180, 255])),
+      k.z(12),
+      "choice-0",
+    ]);
+    choiceText1 = k.add([
+      k.text("A. " + choices[0].text, { size: 15 }),
+      k.color(255, 255, 255),
+      k.pos(52, 535),
+      k.z(13),
+    ]);
+
+    // Button 2
+    choiceBtn2 = k.add([
+      k.rect(340, 42, { radius: 8 }),
+      k.color(50, 60, 100),
+      k.pos(420, 525),
+      k.area(),
+      k.outline(2, k.Color.fromArray([150, 180, 255])),
+      k.z(12),
+      "choice-1",
+    ]);
+    choiceText2 = k.add([
+      k.text("B. " + choices[1].text, { size: 15 }),
+      k.color(255, 255, 255),
+      k.pos(432, 535),
+      k.z(13),
+    ]);
+  }
+
+  // ── Typewriter Effect ──
+  function typewriter(lines, onComplete) {
+    if (state.typingTimer) {
+      clearInterval(state.typingTimer);
+      state.typingTimer = null;
+    }
+    state.typing = true;
+    clearChoices();
+
+    let lineIdx = 0;
+    let charIdx = 0;
+    let displayText = "";
+
+    state.typingTimer = setInterval(() => {
+      if (lineIdx >= lines.length) {
+        // Done
+        clearInterval(state.typingTimer);
+        state.typingTimer = null;
+        state.typing = false;
+        if (onComplete) onComplete();
+        return;
+      }
+
+      const currentLine = lines[lineIdx];
+      if (charIdx < currentLine.length) {
+        displayText += currentLine[charIdx];
+        charIdx++;
+        dialogText.text = displayText + "▌";
+      } else {
+        // Move to next line
+        displayText += "\n";
+        lineIdx++;
+        charIdx = 0;
+        dialogText.text = displayText + "▌";
+      }
+    }, 40); // 40ms per character
+  }
+
+  // ── Click on NPC ──
+  function startNpcConversation(idx) {
+    if (state.typing) return;       // Don't interrupt typing
+    if (state.npcDone[idx]) return; // Already done
+    if (state.activeNpc !== null && state.activeNpc !== idx) return; // Another NPC active
+
+    const data = NPC_DATA[idx];
+    state.activeNpc = idx;
+
+    // Highlight active NPC
+    npcObjs.forEach((obj, i) => {
+      obj.glow.opacity = (i === idx) ? 0.5 : 0;
+    });
+
+    // Determine which dialogue round
+    const round = state.npcRound[idx];
+    if (round === 0) {
+      // Round 1
+      typewriter(data.dialogues.r1, () => {
+        // After typing, show choices if we have them
+        if (data.choices.r1) {
+          showChoices(data.choices.r1);
+        }
+      });
+    } else if (round === 1) {
+      // Round 2 — based on previous choice
+      const branch = state.npcChoice[idx];
+      const dialogueKey = branch === 'a' ? 'r2a' : 'r2b';
+      typewriter(data.dialogues[dialogueKey], () => {
+        // Mark NPC as done
+        state.npcDone[idx] = true;
+        npcObjs[idx].doneBadge.opacity = 1;
+        state.activeNpc = null;
+        npcObjs[idx].glow.opacity = 0;
+        dialogText.text = "（对话结束）点击其他角色继续 ▍";
+        checkAllDone();
+      });
+    }
+  }
+
+  // ── Check if all NPCs done ──
+  function checkAllDone() {
+    if (state.npcDone.every(d => d) && !state.allDone) {
+      state.allDone = true;
+      window.__allDone = true;
+      // Show ending after a short delay
+      setTimeout(() => {
+        dialogText.text = "";
+        k.add([
+          k.rect(500, 200, { radius: 12 }),
+          k.color(0, 0, 0),
+          k.opacity(0.92),
+          k.pos(150, 200),
+          k.z(100),
+          k.outline(3, k.Color.fromArray([255, 215, 0])),
+        ]);
+        k.add([
+          k.text("🌟 序幕完成 🌟", { size: 36 }),
+          k.color(255, 215, 0),
+          k.pos(k.width() / 2, 260),
+          k.anchor("center"),
+          k.z(101),
+        ]);
+        k.add([
+          k.text("你已获得三位守护者的指引。\n冒险才刚刚开始……", { size: 16 }),
+          k.color(220, 220, 220),
+          k.pos(k.width() / 2, 310),
+          k.anchor("center"),
+          k.z(101),
+          k.align("center"),
+        ]);
+      }, 800);
+    }
+  }
+
+  // ── Choice click handlers ──
+  k.onClick("choice-0", () => {
+    if (!state.showChoices || state.typing) return;
+    const idx = state.activeNpc;
+    if (idx === null) return;
+
+    const data = NPC_DATA[idx];
+    const round = state.npcRound[idx];
+
+    if (round === 0) {
+      state.npcChoice[idx] = data.choices.r1[0].branch;
+      state.npcRound[idx] = 1;
+      clearChoices();
+      startNpcConversation(idx);
+    }
+  });
+
+  k.onClick("choice-1", () => {
+    if (!state.showChoices || state.typing) return;
+    const idx = state.activeNpc;
+    if (idx === null) return;
+
+    const data = NPC_DATA[idx];
+    const round = state.npcRound[idx];
+
+    if (round === 0) {
+      state.npcChoice[idx] = data.choices.r1[1].branch;
+      state.npcRound[idx] = 1;
+      clearChoices();
+      startNpcConversation(idx);
+    }
+  });
+
+  // ── NPC click handlers ──
+  NPC_DATA.forEach((data, idx) => {
+    k.onClick(`npc-${idx}`, () => {
+      if (state.typing) return;
+      if (state.npcDone[idx]) return;
+      startNpcConversation(idx);
+    });
+  });
+
+  // ── Keyboard shortcuts ──
+  k.onKeyPress("1", () => { if (state.showChoices && !state.typing) k.trigger("click", "choice-0"); });
+  k.onKeyPress("2", () => { if (state.showChoices && !state.typing) k.trigger("click", "choice-1"); });
+  k.onKeyPress("escape", () => {
+    if (state.activeNpc !== null && !state.typing && !state.showChoices) {
+      const idx = state.activeNpc;
+      state.activeNpc = null;
+      npcObjs[idx].glow.opacity = 0;
+      dialogText.text = "点击一位角色开始对话";
+      clearChoices();
+    }
+  });
+});
+
+k.go("game");
+</script>
+</body>
+</html>
