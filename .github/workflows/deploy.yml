@@ -1,6 +1,6 @@
 # .github/workflows/deploy.yml
 # 星落之书 — GitHub Pages 自动部署
-# 仓库结构: herness/ = 仓库根, 游戏文件在 ai-vn-game/ 子目录
+# 仓库根 = herness/, 游戏文件在 ai-vn-game/ 子目录
 
 name: Deploy to GitHub Pages
 
@@ -9,6 +9,9 @@ on:
     branches: [main]
     paths:
       - 'ai-vn-game/**'
+      - 'index.html'
+      - 'src/**'
+      - 'assets/**'
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
@@ -35,32 +38,51 @@ jobs:
       - name: Prepare Deploy Directory
         run: |
           mkdir -p _deploy
-          cd ai-vn-game
 
-          echo "=== 复制游戏文件 ==="
-          cp -v index.html ../_deploy/
-          cp -v v2-story-natural-v2.html ../_deploy/ 2>/dev/null || echo "⚠ v2-story-natural-v2.html not found"
-          cp -v v2-story-natural.html ../_deploy/ 2>/dev/null || echo "⚠ v2-story-natural.html not found"
-          cp -v v2-story.html ../_deploy/ 2>/dev/null || true
-          cp -v v2-full.html ../_deploy/ 2>/dev/null || true
-          cp -v v3.html ../_deploy/ 2>/dev/null || true
-          cp -v analytics-dashboard.html ../_deploy/ 2>/dev/null || true
-          cp -v itchio-store.html ../_deploy/ 2>/dev/null || true
-          cp -v offline.html ../_deploy/ 2>/dev/null || true
+          echo "=== 从根目录复制 ==="
+          cp -v index.html _deploy/ 2>/dev/null || echo "⚠ index.html not in root"
+          cp -v manifest.json _deploy/ 2>/dev/null || true
+          cp -v sw.js _deploy/ 2>/dev/null || true
+          cp -v README.md _deploy/ 2>/dev/null || true
+          cp -rv src _deploy/ 2>/dev/null || true
+          cp -rv assets _deploy/ 2>/dev/null || true
+
+          echo "=== 从 ai-vn-game/ 复制 ==="
+          cd ai-vn-game
+          cp -v index.html ../_deploy/ 2>/dev/null || echo "  (overwrite with game index)"
+
+          # 核心游戏文件
+          for f in \
+            v2-story-natural-v2.html \
+            v2-story-natural.html \
+            v2-story.html \
+            v2-full.html \
+            v3.html \
+            v2.html \
+            analytics-dashboard.html \
+            itchio-store.html \
+            offline.html \
+            index-audio.html \
+            minimal.html; do
+            if [ -f "$f" ]; then
+              cp -v "$f" ../_deploy/
+            fi
+          done
+
           cp -v manifest.json ../_deploy/ 2>/dev/null || true
           cp -v sw.js ../_deploy/ 2>/dev/null || true
           cp -v README.md ../_deploy/ 2>/dev/null || true
-
-          echo "=== 复制资源目录 ==="
           cp -rv src ../_deploy/ 2>/dev/null || true
           cp -rv assets ../_deploy/ 2>/dev/null || true
           cp -rv locales ../_deploy/ 2>/dev/null || true
 
           cd ..
           touch _deploy/.nojekyll
-          echo "=== _deploy 内容 ==="
+          echo ""
+          echo "=== _deploy 文件列表 ==="
           ls -la _deploy/
-          echo "=== 文件数量: $(ls _deploy/*.html 2>/dev/null | wc -l) HTML ==="
+          echo ""
+          echo "=== HTML 文件数: $(ls _deploy/*.html 2>/dev/null | wc -l) ==="
 
       - name: Deploy to gh-pages
         uses: peaceiris/actions-gh-pages@v4
