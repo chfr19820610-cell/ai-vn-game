@@ -151,6 +151,13 @@ function buildSystemPromptWithGuardrails(npc, extraConstraints = []) {
   parts.push("4. 与上一轮相比情绪有变化吗？为什么？");
   parts.push("完成后，再写下角色实际说出口的话。说话用短句（8-12字），加语气词（吧/了/啊/呗/呢），每人说话风格不同。");
 
+  // ═══ 视觉连续性感知 (T5-P1) ═══
+  parts.push("");
+  parts.push("【场景感知 — 注意你所在的物理空间】");
+  parts.push("- 记住你当前在哪个地点、什么时间。场景变了要自然提及。");
+  parts.push("- 对话中如果换了地方，第一句话要提及新环境。");
+  parts.push("- 周围有谁在？考虑他们的存在影响你说的话。");
+
   return parts.join("\n");
 }
 
