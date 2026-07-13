@@ -484,12 +484,12 @@ var npcData = [
       // Round 0: Opening narration + Lyra intro → first choice
       {
         lines: [
-          { speaker: "narrator", text: "你从陌生的房间醒来。\n阳光透过木窗的缝隙洒在脸上，带着稻草和晨露的气息。\n窗外是一片你从未见过的紫色天空。\n\n头很沉。记忆像是被打碎的镜子——你能感觉到碎片的存在，却拼不出完整的画面。\n你记得自己的名字。但除此之外……一片空白。" },
+          { speaker: "narrator", text: "你从陌生的房间醒来。\n阳光透过木窗的缝隙洒在脸上，带着稻草和晨露的气息。\n窗外是一片你从未见过的紫色天空。\n\n头很沉。记忆像是被打碎的镜子。你能感觉到碎片的存在，却拼不出完整的画面。\n你记得自己的名字。但除此之外……一片空白。" },
           { speaker: "narrator", text: "木门被轻轻推开。一个银发的少女站在门口，逆光中看不清表情。她手上端着一碗冒着热气的汤。" },
           { speaker: "lyra", text: "你醒了。感觉怎么样？", effects: [{ action: "set", var: "met_lyra", value: true }] },
           { speaker: "lyra", text: "你在林子边上晕的。村长扛你回来的。躺了三天了。" },
-          { speaker: "lyra", text: "她把汤放在床边的木桌上，退后两步靠在门框上。似乎不打算靠近——但也没有离开的意思。\n\n「衣服我换的。别想歪——村里没人敢碰个浑身是血的外人。」" },
-          { speaker: "lyra", text: "我知道你一堆想问的。先告诉我——你怎么到这儿来的？走着走着就到了，还是……听见了什么？" }
+          { speaker: "lyra", text: "她把汤放在床边的木桌上，退后两步靠在门框上。似乎不打算靠近。但也没有离开的意思。\n\n「衣服我换的。别想歪。村里没人敢碰个浑身是血的外人。」" },
+          { speaker: "lyra", text: "我知道你一堆想问的。先告诉我。你怎么到这儿来的？走着走着就到了，还是……听见了什么？" }
         ],
         choices: [
           {
@@ -528,7 +528,7 @@ var npcData = [
       // Round 2: "accident" branch
       {
         lines: [
-          { speaker: "lyra", text: "她看了你一眼，没说话。但你知道——她不信。" },
+          { speaker: "lyra", text: "她看了你一眼，没说话。但你知道。她不信。" },
           { speaker: "lyra", text: "她转过身去，声音淡淡的。\n\n「没人会'碰巧'走到这儿。星落村……地图上没有。是它找你，不是你找它。」\n\n她顿了顿。\n\n「你要是不想说……也行。」", effects: [{ action: "set", var: "lyra_doubted_player", value: true }] }
         ],
         nextRound: 4
@@ -537,14 +537,14 @@ var npcData = [
       {
         lines: [
           { speaker: "lyra", text: "她轻轻哼了一声。不吭声，也算答了。" },
-          { speaker: "lyra", text: "她抱起双臂，歪着头看你。\n\n「不说话的人啊，要么是真傻，要么是装傻。你连站都站不稳——应该是真傻。」\n\n嘴角抽了一下。大概是在开玩笑。", effects: [{ action: "set", var: "lyra_observing_player", value: true }] }
+          { speaker: "lyra", text: "她抱起双臂，歪着头看你。\n\n「不说话的人啊，要么是真傻，要么是装傻。你连站都站不稳。应该是真傻。」\n\n嘴角抽了一下。大概是在开玩笑。", effects: [{ action: "set", var: "lyra_observing_player", value: true }] }
         ],
         nextRound: 4
       },
       // Round 4: Transition to square
       {
         lines: [
-          { speaker: "lyra", text: "跟我来。村长在广场等你。别骗他——骗不过的。", effects: [{ action: "set", var: "heading_to_square", value: true }] }
+          { speaker: "lyra", text: "跟我来。村长在广场等你。别骗他。骗不过的。", effects: [{ action: "set", var: "heading_to_square", value: true }] }
         ],
         isFinal: true
       }
@@ -568,8 +568,8 @@ var npcData = [
           { speaker: "narrator", text: "广场中央有一棵巨大的古树，树冠几乎遮蔽了整个广场。\n树下站着一位白发老人，他正仰头望着树梢，仿佛在聆听什么。" },
           { speaker: "elder_kael", text: "啊，来了。他转过身，看了你一会儿。我是凯尔。欢迎。", effects: [{ action: "set", var: "met_elder", value: true }] },
           { speaker: "elder_kael", text: "很少有人能走进来。去星落村的路……早就藏起来了。你身上有神社的味道。" },
-          { speaker: "elder_kael", text: "他走近了几步，你能看清他脸上的皱纹——每一道都像是刻上去的年轮。他的眼睛很亮，不像一个老人该有的亮度。\n\n「这棵树，」他拍了拍古树的树干，「跟我差不多老。它记得每一个来过这儿的人。今天早上，它跟我说有人要来。」" },
-          { speaker: "elder_kael", text: "不过——先不说你从哪来的。东边林子里出事了。神社的封印撑不住了。暗影在往外冒。我需要你帮忙。" }
+          { speaker: "elder_kael", text: "他走近了几步，你能看清他脸上的皱纹。每一道都像是刻上去的年轮。他的眼睛很亮，不像一个老人该有的亮度。\n\n「这棵树，」他拍了拍古树的树干，「跟我差不多老。它记得每一个来过这儿的人。今天早上，它跟我说有人要来。」" },
+          { speaker: "elder_kael", text: "不过。先不说你从哪来的。东边林子里出事了。神社的封印撑不住了。暗影在往外冒。我需要你帮忙。" }
         ],
         choices: [
           {
@@ -603,14 +603,14 @@ var npcData = [
       {
         lines: [
           { speaker: "elder_kael", text: "好。凯尔眼里亮了一下。六十年前，七个人一起封的。现在……裂了。它在找人补上。你来了。", effects: [{ action: "set", var: "kael_trusts_player", value: true }, { action: "add", var: "narrative_tension", value: 1 }] },
-          { speaker: "elder_kael", text: "他伸手按住你的肩膀。老人的手瘦削却有力。\n\n「我年轻时也像你这样——听见有人要帮忙，二话不说就去。那是我最好的地方，也是最要命的。」\n\n他停了一下，眼神暗了暗。\n\n「因为急着帮忙的人……最容易被人当刀使。别让自己变成那样。」", effects: [{ action: "set", var: "kael_gave_warning", value: true }, { action: "add", var: "affection_elder", value: 3 }] }
+          { speaker: "elder_kael", text: "他伸手按住你的肩膀。老人的手瘦削却有力。\n\n「我年轻时也像你这样。听见有人要帮忙，二话不说就去。那是我最好的地方，也是最要命的。」\n\n他停了一下，眼神暗了暗。\n\n「因为急着帮忙的人……最容易被人当刀使。别让自己变成那样。」", effects: [{ action: "set", var: "kael_gave_warning", value: true }, { action: "add", var: "affection_elder", value: 3 }] }
         ],
         nextRound: 4
       },
       // Round 2: "cautious" branch → lore follow-up
       {
         lines: [
-          { speaker: "elder_kael", text: "小心是对的。凯尔点了点头。听好了——这可不是什么野兽强盗。暗影这东西……是积了几百年的怨气。只有神社的光压得住。可光越来越暗了。", effects: [{ action: "add", var: "narrative_tension", value: 2 }] },
+          { speaker: "elder_kael", text: "小心是对的。凯尔点了点头。听好了。这可不是什么野兽强盗。暗影这东西……是积了几百年的怨气。只有神社的光压得住。可光越来越暗了。", effects: [{ action: "add", var: "narrative_tension", value: 2 }] },
           { speaker: "elder_kael", text: "他在古树下的石凳上坐下，示意你也坐。\n\n「六十年前封印的时候……我们以为它睡着了就不醒了。错了。怨气这东西……不散。越攒越厚。跟这树一样，多一圈就是多一年。」\n\n他抬头看着树冠，声音更低了些。\n\n「封印……是拖时间。现在时间拖完了。」", effects: [{ action: "set", var: "kael_explained_history", value: true }, { action: "add", var: "affection_elder", value: 2 }] }
         ],
         nextRound: 4
@@ -618,16 +618,16 @@ var npcData = [
       // Round 3: "refused" branch → Lyra intervenes
       {
         lines: [
-          { speaker: "lyra", text: "不关你的事？莉拉冷笑了一声。那你为什么会在村口昏倒？为什么你身上带着神社的印记？她指了指你手腕上的淡淡光纹——你之前完全没注意到。" },
+          { speaker: "lyra", text: "不关你的事？莉拉冷笑了一声。那你为什么会在村口昏倒？为什么你身上带着神社的印记？她指了指你手腕上的淡淡光纹。你之前完全没注意到。" },
           { speaker: "elder_kael", text: "行了，莉拉。凯尔抬手拦住她。强扭的瓜不甜。你要改主意了，我就在这儿。", effects: [{ action: "set", var: "refused_but_marked", value: true }, { action: "set", var: "has_shrine_mark", value: true }] },
-          { speaker: "elder_kael", text: "他转身要走，走了两步又停住。\n\n「知道吗，旅行者？」没回头。「六十年前，有个人也说了这话——'不关我事。'后来他回来了。什么都晚了。」\n\n「你别等到那天。」", effects: [{ action: "set", var: "kael_told_cautionary_tale", value: true }, { action: "add", var: "narrative_tension", value: 3 }] }
+          { speaker: "elder_kael", text: "他转身要走，走了两步又停住。\n\n「知道吗，旅行者？」没回头。「六十年前，有个人也说了这话。'不关我事。'后来他回来了。什么都晚了。」\n\n「你别等到那天。」", effects: [{ action: "set", var: "kael_told_cautionary_tale", value: true }, { action: "add", var: "narrative_tension", value: 3 }] }
         ],
         nextRound: 4
       },
       // Round 4: Second choice — where to go next
       {
         lines: [
-          { speaker: "elder_kael", text: "神社在林子里，过了低语桥就到。但别空手去——找马库斯，铁匠铺那个大块头。让他给你件趁手的。", effects: [{ action: "set", var: "objective", value: "visit_blacksmith" }, { action: "set", var: "has_shrine_mark", value: true }] }
+          { speaker: "elder_kael", text: "神社在林子里，过了低语桥就到。但别空手去。找马库斯，铁匠铺那个大块头。让他给你件趁手的。", effects: [{ action: "set", var: "objective", value: "visit_blacksmith" }, { action: "set", var: "has_shrine_mark", value: true }] }
         ],
         choices: [
           {
@@ -636,7 +636,7 @@ var npcData = [
             nextRound: 5
           },
           {
-            text: "「等等——神社的事，再多说点。」",
+            text: "「等等。神社的事，再多说点。」",
             effects: [{ action: "add", var: "affection_elder", value: 2 }],
             nextRound: 6
           },
@@ -657,8 +657,8 @@ var npcData = [
       // Round 6: "ask about shrine" lore
       {
         lines: [
-          { speaker: "elder_kael", text: "神社……很久以前一个守护者建的。她把暗影压在底下。后来……被自己人从背后捅了刀子。她的怨气反过来养大了暗影。封印不是关她——是想让她睡过去。可现在，她要醒了。", effects: [{ action: "set", var: "knows_shrine_lore", value: true }, { action: "set", var: "next_destination", value: "blacksmith" }] },
-          { speaker: "elder_kael", text: "他声音越来越轻，像在跟自己说话。\n\n「背后捅刀——人干这事从来不用学。她把命交给她最信的两个人：她爱的人，她的亲兄弟。封印仪式，三个人一起做的。仪式刚完……她转身的那一刻，刀就进去了。」\n\n「他们说，是为了不让她变成暗影。真话假话？六百年了，只有这棵树还记着。」", effects: [{ action: "set", var: "knows_betrayal_details", value: true }, { action: "add", var: "narrative_tension", value: 3 }] }
+          { speaker: "elder_kael", text: "神社……很久以前一个守护者建的。她把暗影压在底下。后来……被自己人从背后捅了刀子。她的怨气反过来养大了暗影。封印不是关她。是想让她睡过去。可现在，她要醒了。", effects: [{ action: "set", var: "knows_shrine_lore", value: true }, { action: "set", var: "next_destination", value: "blacksmith" }] },
+          { speaker: "elder_kael", text: "他声音越来越轻，像在跟自己说话。\n\n「背后捅刀。人干这事从来不用学。她把命交给她最信的两个人：她爱的人，她的亲兄弟。封印仪式，三个人一起做的。仪式刚完……她转身的那一刻，刀就进去了。」\n\n「他们说，是为了不让她变成暗影。真话假话？六百年了，只有这棵树还记着。」", effects: [{ action: "set", var: "knows_betrayal_details", value: true }, { action: "add", var: "narrative_tension", value: 3 }] }
         ],
         isFinal: true
       },
@@ -666,7 +666,7 @@ var npcData = [
       {
         lines: [
           { speaker: "lyra", text: "当然。她难得地露出一丝笑容。等你三年了，不差这一会儿。", effects: [{ action: "set", var: "lyra_will_accompany", value: true }, { action: "set", var: "next_destination", value: "blacksmith" }] },
-          { speaker: "lyra", text: "她走到你身边，声音低得只有你能听见。\n\n「三年前我一人过的桥。」手指不自觉地攥紧了袖口。「差点没回来。这次——两个人走，应该好点。」\n\n没看你的眼睛。但你看见了她攥紧的指节。", effects: [{ action: "set", var: "lyra_admitted_past", value: true }, { action: "add", var: "affection_lyra", value: 3 }] }
+          { speaker: "lyra", text: "她走到你身边，声音低得只有你能听见。\n\n「三年前我一人过的桥。」手指不自觉地攥紧了袖口。「差点没回来。这次。两个人走，应该好点。」\n\n没看你的眼睛。但你看见了她攥紧的指节。", effects: [{ action: "set", var: "lyra_admitted_past", value: true }, { action: "add", var: "affection_lyra", value: 3 }] }
         ],
         isFinal: true
       }
@@ -688,9 +688,9 @@ var npcData = [
       {
         lines: [
           { speaker: "narrator", text: "铁锤敲击铁砧的声音从远处就能听到。铺子里热浪扑面，炉火映红了四壁。一个魁梧的男人正抡着铁锤，汗水顺着背脊流下。" },
-          { speaker: "marcus", text: "哈！又一个被老凯尔忽悠来的？马库斯头也不抬，手上锤子没停。行，我看看——剑，还是斧子？", effects: [{ action: "set", var: "met_marcus", value: true }] },
+          { speaker: "marcus", text: "哈！又一个被老凯尔忽悠来的？马库斯头也不抬，手上锤子没停。行，我看看。剑，还是斧子？", effects: [{ action: "set", var: "met_marcus", value: true }] },
           { speaker: "marcus", text: "等等……他停了锤子，上下看你。你身上……神社的味道。不简单。老凯尔这回没瞎。" },
-          { speaker: "marcus", text: "把锤子搁砧板上，擦了把汗。炉火在他背后跳，影子在墙上晃——老大一个。\n\n「知道不？上次有人带着神社味儿进这铺子，是六十年前。我爹接的。后来他死了。」\n\n他顿了顿，咧嘴一笑——笑是笑了，眼睛里没有。\n\n「不过别怕。我爹打的家伙事儿还活着。」" }
+          { speaker: "marcus", text: "把锤子搁砧板上，擦了把汗。炉火在他背后跳，影子在墙上晃。老大一个。\n\n「知道不？上次有人带着神社味儿进这铺子，是六十年前。我爹接的。后来他死了。」\n\n他顿了顿，咧嘴一笑。笑是笑了，眼睛里没有。\n\n「不过别怕。我爹打的家伙事儿还活着。」" }
         ],
         choices: [
           {
@@ -725,23 +725,23 @@ var npcData = [
       // Round 1: "sword" branch
       {
         lines: [
-          { speaker: "marcus", text: "好眼力！他从墙上取下一把剑，炉火照得剑身泛银。我爹这辈子最后一把——银刃剑。砍别的东西也就快一点，砍暗影……一下一个。", effects: [{ action: "set", var: "has_special_weapon", value: true }] },
-          { speaker: "marcus", text: "递剑的时候，手抖了一下。\n\n「这把剑……我爹打了三个月。人没了以后，我从废墟里扒出来的。摸着还热。」\n\n他吸了口气。\n\n「暗影不怕铁。怕的是打铁的人。懂吗——别让它白打了。」", effects: [{ action: "add", var: "affection_marcus", value: 3 }, { action: "set", var: "marcus_shared_sword_lore", value: true }] }
+          { speaker: "marcus", text: "好眼力！他从墙上取下一把剑，炉火照得剑身泛银。我爹这辈子最后一把。银刃剑。砍别的东西也就快一点，砍暗影……一下一个。", effects: [{ action: "set", var: "has_special_weapon", value: true }] },
+          { speaker: "marcus", text: "递剑的时候，手抖了一下。\n\n「这把剑……我爹打了三个月。人没了以后，我从废墟里扒出来的。摸着还热。」\n\n他吸了口气。\n\n「暗影不怕铁。怕的是打铁的人。懂吗。别让它白打了。」", effects: [{ action: "add", var: "affection_marcus", value: 3 }, { action: "set", var: "marcus_shared_sword_lore", value: true }] }
         ],
         nextRound: 4
       },
       // Round 2: "shield" branch
       {
         lines: [
-          { speaker: "marcus", text: "聪明。他从角落里翻出一面木盾，看着老，摸着结实。神社古树的枝子编的。暗影在你耳边嘀咕的时候——弹回去。", effects: [{ action: "set", var: "has_special_weapon", value: true }] },
-          { speaker: "marcus", text: "他把盾翻过来，背面刻着一行小字。\n\n「'守护，而非伤害。'我爹刻的。他觉得，最好的家伙事儿不是要人命——是保人命。」\n\n马库斯哼了一声。\n\n「天真。但也不全错。」", effects: [{ action: "add", var: "affection_marcus", value: 2 }, { action: "set", var: "marcus_shared_shield_lore", value: true }] }
+          { speaker: "marcus", text: "聪明。他从角落里翻出一面木盾，看着老，摸着结实。神社古树的枝子编的。暗影在你耳边嘀咕的时候。弹回去。", effects: [{ action: "set", var: "has_special_weapon", value: true }] },
+          { speaker: "marcus", text: "他把盾翻过来，背面刻着一行小字。\n\n「'守护，而非伤害。'我爹刻的。他觉得，最好的家伙事儿不是要人命。是保人命。」\n\n马库斯哼了一声。\n\n「天真。但也不全错。」", effects: [{ action: "add", var: "affection_marcus", value: 2 }, { action: "set", var: "marcus_shared_shield_lore", value: true }] }
         ],
         nextRound: 4
       },
       // Round 3: "none" branch
       {
         lines: [
-          { speaker: "marcus", text: "他一愣，然后放声大笑。哈哈哈！有种！笑完脸一收，嗓门压低。听着，小子。我爹就是空手去的。不是勇敢——是蠢。" },
+          { speaker: "marcus", text: "他一愣，然后放声大笑。哈哈哈！有种！笑完脸一收，嗓门压低。听着，小子。我爹就是空手去的。不是勇敢。是蠢。" },
           { speaker: "marcus", text: "转身在架子上翻了翻，掏出个小布袋。\n\n「拿着。」塞你手里。三颗发光的石子儿。「神社护符的碴子。不值钱。暗影近了会烫手。比空手强。」\n\n不看你，又抄起锤子。\n\n「……走吧。趁我还没反悔。」", effects: [{ action: "set", var: "has_lantern", value: true }, { action: "set", var: "marcus_gave_charm", value: true }, { action: "add", var: "affection_marcus", value: 4 }] }
         ],
         nextRound: 4
@@ -749,8 +749,8 @@ var npcData = [
       // Round 4: Warning + departure
       {
         lines: [
-          { speaker: "marcus", text: "……算了。背过身去，嗓门低下来。不管你拿的啥，听好了——暗影不打你身子。往你心里钻。让你看见你最怕的。", effects: [{ action: "set", var: "marcus_warning_given", value: true }, { action: "add", var: "narrative_tension", value: 2 }] },
-          { speaker: "marcus", text: "行了，别磨叽。神社在等你——我感觉得到。天越黑，它越凶。趁现在走，天黑前能到。", effects: [{ action: "set", var: "ready_to_depart", value: true }] }
+          { speaker: "marcus", text: "……算了。背过身去，嗓门低下来。不管你拿的啥，听好了。暗影不打你身子。往你心里钻。让你看见你最怕的。", effects: [{ action: "set", var: "marcus_warning_given", value: true }, { action: "add", var: "narrative_tension", value: 2 }] },
+          { speaker: "marcus", text: "行了，别磨叽。神社在等你。我感觉得到。天越黑，它越凶。趁现在走，天黑前能到。", effects: [{ action: "set", var: "ready_to_depart", value: true }] }
         ],
         isFinal: true
       }
