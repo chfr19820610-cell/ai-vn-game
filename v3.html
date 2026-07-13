@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=800">
+<title>VN v3 - Merchant + Items + Affection</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a1a;
+    display: flex; justify-content: center; align-items: center;
+    height: 100vh; overflow: hidden;
+    font-family: 'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+  }
+  canvas { display: block; border-radius: 8px; }
+</style>
+</head>
+<body>
+<script src="https://unpkg.com/kaboom@2000.2.1/dist/kaboom.js"></script>
+<script>
+kaboom({ global: true, width: 800, height: 600, background: [15,15,35] });
+
+// ─── Playwright Click Compatibility Fix ───
+(function() {
+  var canvas = document.querySelector('canvas');
+  if (!canvas) return;
+  console.log('[v3-fix] canvas found, installing capture-phase click shim');
+
+  function synthMouse(type, src) {
+    return new MouseEvent(type, {
+      button: src.button, buttons: src.buttons,
+      clientX: src.clientX, clientY: src.clientY,
+      offsetX: src.offsetX, offsetY: src.offsetY,
+      screenX: src.screenX, screenY: src.screenY,
+      movementX: 0, movementY: 0,
+      bubbles: true, cancelable: true
+    });
+  }
+
+  canvas.addEventListener('mousedown', function(e) {
+    canvas.dispatchEvent(synthMouse('mousemove', e));
+  }, true);
+
+  canvas.addEventListener('pointerdown', function(e) {
+    canvas.dispatchEvent(new PointerEvent('pointermove', {
+      pointerId: e.pointerId, pointerType: e.pointerType,
+      clientX: e.clientX, clientY: e.clientY,
+      bubbles: true, cancelable: true
+    }));
+  }, true);
+
+  canvas.addEventListener('mouseup', function(e) {
+    var pressed = (typeof isMousePressed === 'function') && isMousePressed();
+    if (pressed) {
+      e.stopImmediatePropagation();
+      requestAnimationFrame(function() {
+        canvas.dispatchEvent(synthMouse('mouseup', e));
+      });
+    }
+  }, true);
+
+  canvas.addEventListener('pointerup', function(e) {
+    var pressed = (typeof isMousePressed === 'function') && isMousePressed();
+    if (pressed) {
+      e.stopImmediatePropagation();
+      requestAnimationFrame(function() {
+        canvas.dispatchEvent(new PointerEvent('pointerup', {
+          pointerId: e.pointerId, pointerType: e.pointerType,
+          clientX: e.clientX, clientY: e.clientY,
+          button: e.button, buttons: e.buttons,
+          bubbles: true, cancelable: true
+        }));
+      });
+    }
+  }, true);
+
+  console.log('[v3-fix] capture-phase click shim installed');
+})();
+
+// ─── Playwright Programmatic Helpers ───
+window.__clickNpc = function(idx) {
+  if (state.typing) { console.log('[__clickNpc] busy, typing'); return false; }
+  if (state.done[idx]) { console.log('[__clickNpc] npc ' + idx + ' already done'); return false; }
+  if (state.activeNpc !== null && state.activeNpc !== idx) { console.log('[__clickNpc] another npc active'); return false; }
+  console.log('[__clickNpc] triggering npc ' + idx);
+  startTalk(idx);
+  return true;
+};
+window.__clickChoice = function(n) {
+  if (!state.showChoices || state.typing) { console.log('[__clickChoice] no choices showing or typing'); return false; }
+  var idx = state.activeNpc;
+  if (idx === null) { console.log('[__clickChoice] no active npc'); return false; }
+  console.log('[__clickChoice] selecting choice ' + n + ' for npc ' + idx);
+  state.choice[idx] = npcData[idx].choices.r1[n].branch;
+  state.round[idx] = 1;
+  clearChoices();
+  startTalk(idx);
+  return true;
+};
+window.__waitFor = function(prop, timeout) {
+  timeout = timeout || 10000;
+  return new Promise(function(resolve, reject) {
+    var start = Date.now();
+    var iv = setInterval(function() {
+      if (window[prop]) { clearInterval(iv); resolve(true); }
+      else if (Date.now() - start > timeout) { clearInterval(iv); reject(new Error('timeout waiting for ' + prop)); }
+    }, 100);
+  });
+};
+
+var NUM_NPCS = 4;
+
+// ─── Game State ───
+var state = {
+  activeNpc: null,
+  typing: false,
+  typeActive: 0,
+  showChoices: false,
+  done: [false, false, false, false],
+  round: [0, 0, 0, 0],
+  choice: [null, null, null, null],
+  affection: [20, 20, 20, 20],   // 0-100, start neutral
+  inventory: [],                 // [{name, emoji, desc}]
+  allDone: false
+};
+window.__gameState = state;
+
+// ─── NPC Data ───
+var npcData = [
+  {
+    id: 0, name: "长者 Kael", emoji: "🧙",
+    x: 150, y: 205, color: [180,140,80],
+    itemReward: { name: "古老的符文", emoji: "📜", desc: "蕴含远古魔力的羊皮卷" },
+    dialogues: {
+      r1: ["远道而来的旅人啊，神殿的封印正在消退。","每一轮明月升起，黑暗便在深处躁动一分。","你……能感觉到吗？空气中那股不安的气息。"],
+      r2a: ["千年之前，七位贤者用生命铸成封印，","将混沌之主囚禁于神殿深处。","如今最后一道封印正在崩裂，时间不多了。"],
+      r2b: ["勇敢的孩子。你必须找到三块水晶碎片。","它们散落在禁林、深渊裂隙与遗忘之塔。","但每一条路都有远古守护者在等待着你。"]
+    },
+    choices: { r1: [
+      { text: "神殿有什么来历？", branch: "a" },
+      { text: "我能帮上什么忙？", branch: "b" }
+    ]}
+  },
+  {
+    id: 1, name: "守卫 Thorne", emoji: "🛡️",
+    x: 310, y: 205, color: [100,140,200],
+    itemReward: { name: "铁护符", emoji: "🔰", desc: "守卫的祝福，抵挡一次致命伤害" },
+    dialogues: {
+      r1: ["站住。没有长者的许可，谁也不准通过。","表明你的来意，陌生人。","我见过太多心怀不轨之人想混进神殿。"],
+      r2a: ["哼，难得。你走的是一条光荣之路。","前方的石桥布有机关——只踩发蓝光的石板。","愿你的剑锋永远锐利，旅人。"],
+      r2b: ["好奇心在这些地方杀的可不只是猫。","行吧，你可以过去。但过了桥之后，","别碰任何东西。我可不会来救你。"]
+    },
+    choices: { r1: [
+      { text: "我要修复神殿封印。", branch: "a" },
+      { text: "只是路过，让我过去。", branch: "b" }
+    ]}
+  },
+  {
+    id: 2, name: "旅人 Lyra", emoji: "🧭",
+    x: 490, y: 205, color: [160,100,200],
+    itemReward: { name: "森林地图", emoji: "🗺️", desc: "标记了隐藏路径的破旧地图" },
+    dialogues: {
+      r1: ["嘘……你听到了吗？","这片森林记得每一个走过它的人。","有些人……再也没有离开过。"],
+      r2a: ["它们在说「背叛」。七位贤者中，","有一位并非心甘情愿献出生命。","他的影子至今仍在林间游荡，寻找着什么……"],
+      r2b: ["今天黎明，一个披斗篷的人影经过。","他在老橡树上刻下了奇怪的符文。","上面写着：钥匙从未被毁——它被藏起来了。"]
+    },
+    choices: { r1: [
+      { text: "低语在说什么？", branch: "a" },
+      { text: "你见过其他人吗？", branch: "b" }
+    ]}
+  },
+  {
+    id: 3, name: "商人 Zephyr", emoji: "💼",
+    x: 670, y: 205, color: [200,150,50],
+    itemReward: null,  // merchant gives items via dialogue, not on completion
+    dialogues: {
+      r1: ["哈！终于有人走到我这摊子面前了。","我是 Zephyr，这片大陆上最后一位流浪商人。","别看我穿得破——我手里的可都是硬货。"],
+      r2a: ["聪明人的选择！这把「星火匕首」出自矮人锻造大师之手。","刀刃上刻着火焰符文，切兽人跟切黄油似的。","拿去吧——就当交个朋友。", "(获得 星火匕首 🔪)"],
+      r2b: ["「幽影斗篷」——穿上去能在阴影中隐身三息。","上次有个刺客出价三百金币，我没卖。","但你看起来靠谱。拿去吧，算我投资。", "(获得 幽影斗篷 👻)"]
+    },
+    choices: { r1: [
+      { text: "看看你的武器。", branch: "a" },
+      { text: "有什么防具？", branch: "b" }
+    ]}
+  }
+];
+
+// ─── Item Rewards for Merchant choices ───
+var merchantItems = {
+  a: { name: "星火匕首", emoji: "🔪", desc: "矮人锻造，火焰符文附魔" },
+  b: { name: "幽影斗篷", emoji: "👻", desc: "三息隐身，暗杀者梦寐以求" }
+};
+
+// ─── Affection helpers ───
+function addAffection(idx, amount) {
+  state.affection[idx] = Math.min(100, state.affection[idx] + amount);
+  updateAffectionBars();
+  console.log('[affection] npc ' + idx + ' +' + amount + ' = ' + state.affection[idx]);
+}
+
+function updateAffectionBars() {
+  for (var i = 0; i < NUM_NPCS; i++) {
+    if (window._affBars[i]) {
+      var pct = state.affection[i] / 100;
+      window._affBars[i].width = 48 * pct;
+      // Color: red→yellow→green based on affection
+      var r, g, b;
+      if (pct < 0.33) {
+        r = 220; g = 60 + Math.floor(pct * 3 * 140); b = 60;
+      } else if (pct < 0.66) {
+        r = 220 - Math.floor((pct - 0.33) * 3 * 170);
+        g = 200; b = 60;
+      } else {
+        r = 50; g = 200; b = 60 + Math.floor((pct - 0.66) * 3 * 60);
+      }
+      window._affBars[i].color = rgb(r, g, b);
+    }
+    if (window._affLabels[i]) {
+      window._affLabels[i].text = "❤ " + state.affection[i];
+    }
+  }
+}
+
+// ─── Inventory helpers ───
+function addItem(item) {
+  // Check for duplicates
+  for (var i = 0; i < state.inventory.length; i++) {
+    if (state.inventory[i].name === item.name) return;
+  }
+  state.inventory.push(item);
+  updateInventoryPanel();
+  console.log('[item] added: ' + item.emoji + ' ' + item.name);
+}
+
+function updateInventoryPanel() {
+  // Remove old inventory text objects
+  if (window._invObjects) {
+    for (var i = 0; i < window._invObjects.length; i++) {
+      destroy(window._invObjects[i]);
+    }
+  }
+  window._invObjects = [];
+
+  if (state.inventory.length === 0) return;
+
+  var startY = 60;
+  for (var i = 0; i < state.inventory.length; i++) {
+    var item = state.inventory[i];
+    var t = add([
+      text(item.emoji + " " + item.name, { size: 11 }),
+      color(255, 255, 255),
+      pos(610, startY + i * 18),
+      { inventory: true }
+    ]);
+    window._invObjects.push(t);
+  }
+}
+
+// ─── Typewriter ───
+var _typeIdCounter = 0;
+function typeText(txtObj, lines, onDone) {
+  _typeIdCounter++;
+  var myId = _typeIdCounter;
+  state.typeActive = myId;
+  state.typing = true;
+  state.showChoices = false;
+  if (window._choice1) { destroy(window._choice1); destroy(window._choice1txt); window._choice1 = null; }
+  if (window._choice2) { destroy(window._choice2); destroy(window._choice2txt); window._choice2 = null; }
+
+  var lineIdx = 0, charIdx = 0, display = "";
+
+  loop(0.04, function() {
+    if (state.typeActive !== myId) return;
+    if (lineIdx >= lines.length) {
+      state.typeActive = 0;
+      state.typing = false;
+      txtObj.text = display;
+      if (onDone) onDone();
+      return;
+    }
+    var cur = lines[lineIdx];
+    if (charIdx < cur.length) {
+      display += cur[charIdx];
+      charIdx++;
+      txtObj.text = display + "▌";
+    } else {
+      display += "\n";
+      lineIdx++;
+      charIdx = 0;
+      txtObj.text = display + "▌";
+    }
+  });
+}
+
+function showChoices(choices) {
+  if (state.showChoices) return;
+  state.showChoices = true;
+
+  window._choice1 = add([
+    rect(340, 42, { radius: 8 }),
+    color(50, 60, 100),
+    pos(40, 525),
+    area(),
+    outline(2, rgb(150, 180, 255)),
+    "choice-0"
+  ]);
+  window._choice1txt = add([
+    text("A. " + choices[0].text, { size: 15 }),
+    color(255, 255, 255),
+    pos(52, 535)
+  ]);
+
+  window._choice2 = add([
+    rect(340, 42, { radius: 8 }),
+    color(50, 60, 100),
+    pos(420, 525),
+    area(),
+    outline(2, rgb(150, 180, 255)),
+    "choice-1"
+  ]);
+  window._choice2txt = add([
+    text("B. " + choices[1].text, { size: 15 }),
+    color(255, 255, 255),
+    pos(432, 535)
+  ]);
+}
+
+function clearChoices() {
+  state.showChoices = false;
+  if (window._choice1) { destroy(window._choice1); destroy(window._choice1txt); window._choice1 = null; }
+  if (window._choice2) { destroy(window._choice2); destroy(window._choice2txt); window._choice2 = null; }
+}
+
+// ─── End-of-dialogue reward ───
+function finishNpc(idx) {
+  state.done[idx] = true;
+  state.activeNpc = null;
+  if (window._glow[idx]) window._glow[idx].opacity = 0;
+  if (window._badges[idx]) window._badges[idx].opacity = 1;
+
+  // Give item reward (non-merchant NPCs)
+  if (npcData[idx].itemReward) {
+    addItem(npcData[idx].itemReward);
+  }
+
+  // Affection bonus for completing
+  addAffection(idx, 15);
+
+  window._dialogTxt.text = "（对话结束）点击其他角色继续 ▍";
+  checkAllDone();
+}
+
+// ─── Start NPC Conversation ───
+function startTalk(idx) {
+  if (state.typing) return;
+  if (state.done[idx]) return;
+  if (state.activeNpc !== null && state.activeNpc !== idx) return;
+
+  state.activeNpc = idx;
+  var d = npcData[idx];
+  var r = state.round[idx];
+
+  // Affection for initiating talk
+  addAffection(idx, 5);
+
+  // Highlight active
+  for (var i = 0; i < NUM_NPCS; i++) {
+    if (window._glow[i]) window._glow[i].opacity = (i === idx) ? 0.4 : 0;
+  }
+
+  if (r === 0) {
+    typeText(window._dialogTxt, d.dialogues.r1, function() {
+      showChoices(d.choices.r1);
+    });
+  } else if (r === 1) {
+    var branch = state.choice[idx];
+    var key = branch === 'a' ? 'r2a' : 'r2b';
+    var lines = d.dialogues[key];
+
+    typeText(window._dialogTxt, lines, function() {
+      // Merchant: give item based on choice
+      if (idx === 3 && merchantItems[branch]) {
+        addItem(merchantItems[branch]);
+      }
+      finishNpc(idx);
+    });
+  }
+}
+
+function checkAllDone() {
+  if (state.done[0] && state.done[1] && state.done[2] && state.done[3] && !state.allDone) {
+    state.allDone = true;
+    window.__allDone = true;
+    setTimeout(function() {
+      add([
+        rect(500, 200, { radius: 12 }),
+        color(0, 0, 0), opacity(0.92),
+        pos(150, 200),
+        outline(3, rgb(255, 215, 0))
+      ]);
+      add([
+        text("🌟 序幕完成 🌟", { size: 36 }),
+        color(255, 215, 0),
+        pos(width() / 2, 260),
+        origin("center")
+      ]);
+
+      var itemList = state.inventory.map(function(it) { return it.emoji + " " + it.name; }).join("  ");
+      if (itemList) {
+        add([
+          text("背包: " + itemList, { size: 13 }),
+          color(200, 200, 200),
+          pos(width() / 2, 310),
+          origin("center")
+        ]);
+      }
+
+      var totalAff = state.affection.reduce(function(a,b){return a+b;}, 0);
+      add([
+        text("总好感度: " + totalAff + " / 400", { size: 14 }),
+        color(255, 180, 100),
+        pos(width() / 2, 335),
+        origin("center")
+      ]);
+    }, 800);
+  }
+}
+
+// ─── Main Scene ───
+scene("main", function() {
+  // Background
+  add([rect(800, 300), color(25, 40, 25), pos(0, 400)]);
+
+  // Title
+  add([text("⚔️ 神殿之路 · 序幕 ⚔️", { size: 18 }), color(220, 200, 140), pos(width()/2, 22), origin("center")]);
+  add([text("🧑 4 NPC  ·  🎒 道具系统  ·  ❤ 好感度", { size: 10 }), color(150, 150, 200), pos(width()/2, 40), origin("center")]);
+
+  // ─── Inventory Panel (top-right) ───
+  add([text("🎒 背包", { size: 13 }), color(255, 215, 100), pos(605, 42)]);
+
+  // ─── NPCs ───
+  window._glow = [];
+  window._badges = [];
+  window._affBars = [];
+  window._affLabels = [];
+  window._affBgBars = [];
+
+  for (var i = 0; i < NUM_NPCS; i++) {
+    var d = npcData[i];
+    var nx = d.x, ny = d.y;
+
+    // Glow
+    var g = add([rect(72, 98, { radius: 10 }), color(d.color), opacity(0), pos(nx, ny), origin("center")]);
+    window._glow.push(g);
+
+    // Body
+    add([rect(64, 90, { radius: 8 }), color(d.color), pos(nx, ny), origin("center"), area(), "npc-" + i]);
+
+    // Emoji
+    add([text(d.emoji, { size: 32 }), pos(nx, ny - 5), origin("center")]);
+
+    // ─── Affection bar (above name) ───
+    var barY = ny + 52;
+    var barW = 50;
+    var barH = 5;
+
+    // Background bar
+    var bgBar = add([
+      rect(barW, barH, { radius: 2 }),
+      color(60, 60, 60),
+      pos(nx - barW/2, barY)
+    ]);
+    window._affBgBars.push(bgBar);
+
+    // Filled bar
+    var pct = state.affection[i] / 100;
+    var fillBar = add([
+      rect(barW * pct, barH, { radius: 2 }),
+      color(rgb(220, 140, 80)),
+      pos(nx - barW/2, barY)
+    ]);
+    window._affBars.push(fillBar);
+
+    // Affection label
+    var lbl = add([
+      text("❤ 20", { size: 9 }),
+      color(255, 180, 120),
+      pos(nx, barY + 8),
+      origin("top")
+    ]);
+    window._affLabels.push(lbl);
+
+    // Name
+    add([text(d.name, { size: 12 }), color(255,255,255), pos(nx, barY + 22), origin("top")]);
+
+    // Done badge
+    var bdg = add([text("✓", { size: 18 }), color(100,255,100), pos(nx + 30, ny - 40), origin("center"), opacity(0)]);
+    window._badges.push(bdg);
+  }
+
+  // ─── Special merchant label ───
+  add([text("🏪 神秘商人", { size: 10 }), color(255, 200, 100), pos(npcData[3].x, npcData[3].y + 52 + 34), origin("top")]);
+
+  // ─── Dialog box ───
+  add([rect(740, 150, { radius: 10 }), color(0,0,0), opacity(0.88), pos(30, 430), outline(2, rgb(200,200,200))]);
+
+  window._dialogTxt = add([
+    text("点击一位角色开始对话", { size: 18 }),
+    color(255, 255, 255),
+    pos(50, 445)
+  ]);
+
+  // ─── NPC click handlers ───
+  for (var i = 0; i < NUM_NPCS; i++) {
+    (function(idx) {
+      onClick("npc-" + idx, function() {
+        startTalk(idx);
+      });
+    })(i);
+  }
+
+  // ─── Choice click handlers ───
+  onClick("choice-0", function() {
+    if (!state.showChoices || state.typing) return;
+    var idx = state.activeNpc;
+    if (idx === null) return;
+    state.choice[idx] = npcData[idx].choices.r1[0].branch;
+    state.round[idx] = 1;
+    clearChoices();
+    startTalk(idx);
+  });
+
+  onClick("choice-1", function() {
+    if (!state.showChoices || state.typing) return;
+    var idx = state.activeNpc;
+    if (idx === null) return;
+    state.choice[idx] = npcData[idx].choices.r1[1].branch;
+    state.round[idx] = 1;
+    clearChoices();
+    startTalk(idx);
+  });
+
+  // ─── Keyboard shortcuts ───
+  onKeyPress("1", function() {
+    if (state.showChoices && !state.typing) {
+      var idx = state.activeNpc;
+      if (idx === null) return;
+      state.choice[idx] = npcData[idx].choices.r1[0].branch;
+      state.round[idx] = 1;
+      clearChoices();
+      startTalk(idx);
+    }
+  });
+  onKeyPress("2", function() {
+    if (state.showChoices && !state.typing) {
+      var idx = state.activeNpc;
+      if (idx === null) return;
+      state.choice[idx] = npcData[idx].choices.r1[1].branch;
+      state.round[idx] = 1;
+      clearChoices();
+      startTalk(idx);
+    }
+  });
+});
+
+go("main");
+</script>
+</body>
+</html>
