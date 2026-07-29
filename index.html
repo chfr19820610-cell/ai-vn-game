@@ -2,3124 +2,570 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<title>星落之夜 v2.0</title>
+<title>星落之夜</title>
 <style>
-/* ── Reset ── */
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{width:100%;height:100%;overflow:hidden;background:#0a0e1a;color:#e2e8f0;font-family:system-ui,-apple-system,sans-serif;touch-action:manipulation}
-#game-root{width:100%;height:100%;position:relative;overflow:hidden}
+html,body{width:100%;height:100%;overflow:hidden;font-family:system-ui,'PingFang SC','Microsoft YaHei',sans-serif;touch-action:manipulation;user-select:none}
 
-/* ── CSS Custom Properties + Safe-area defaults ── */
-:root {
-  --sa-t: env(safe-area-inset-top, 0px);
-  --sa-b: env(safe-area-inset-bottom, 0px);
-  --sa-l: env(safe-area-inset-left, 0px);
-  --sa-r: env(safe-area-inset-right, 0px);
+/* 场景背景 */
+#bg{position:fixed;inset:0;z-index:0;transition:background 1s;background:radial-gradient(ellipse at 30% 40%,#0f172a 0%,#1e1b4b 50%,#0a0e1a 100%)}
+#bg-overlay{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:0;transition:opacity .6s;background:#0a0e1a}
+#bg-particles{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
 
-  --dialog-maxw: 800px;
-  --choice-maxw: 600px;
-  --hud-maxw: 1200px;
-  --menu-maxw: 440px;
+/* 对话框 */
+#dialog{position:fixed;bottom:0;left:0;right:0;z-index:50;padding:0 max(16px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));display:none;opacity:0;transition:opacity .3s}
+#dialog.show{display:block;opacity:1}
+#dialog-inner{max-width:720px;margin:0 auto;background:rgba(15,23,42,.9);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-radius:14px;border:1px solid rgba(129,140,248,.15);padding:16px 20px;cursor:pointer;position:relative}
+#dialog-speaker{display:flex;align-items:center;gap:8px;margin-bottom:8px;min-height:32px}
+#dialog-avatar{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;background:rgba(129,140,248,.15);border:1px solid rgba(129,140,248,.25);flex-shrink:0;transition:all .3s}
+#dialog-name{font-size:14px;font-weight:600;color:#a5b4fc;letter-spacing:.5px;transition:color .3s}
+#dialog-text{font-size:16px;line-height:1.8;color:#e2e8f0;min-height:2.8em;white-space:pre-wrap;word-break:break-word;padding-left:2px}
+#dialog-text.center{text-align:center;color:#94a3b8}
+#dialog-text.italic{font-style:italic;opacity:.85}
+#dialog-indicator{text-align:right;font-size:12px;color:#94a3b8;margin-top:6px;min-height:18px;transition:color .2s}
 
-  --spacing-h: 24px;
-  --spacing-v: 16px;
+/* 选项面板 */
+#choices{position:fixed;bottom:0;left:0;right:0;z-index:55;padding:0 max(16px,env(safe-area-inset-right)) max(160px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));display:none}
+#choices.show{display:block}
+#choices-inner{max-width:600px;margin:0 auto;display:flex;flex-direction:column;gap:10px}
+.choice-btn{display:block;width:100%;padding:14px 18px;background:rgba(15,23,42,.88);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(129,140,248,.2);border-radius:10px;color:#e2e8f0;font-size:15px;line-height:1.5;cursor:pointer;text-align:left;transition:all .2s;font-family:inherit}
+.choice-btn:hover,.choice-btn:active{background:rgba(99,102,241,.2);border-color:rgba(99,102,241,.5);transform:translateX(4px)}
+.choice-btn.disabled{opacity:.4;cursor:not-allowed}
+.choice-btn .star{color:#fbbf24;margin-right:8px;font-size:12px}
+
+/* 顶部HUD */
+#hud{position:fixed;top:0;left:0;right:0;z-index:40;padding:max(8px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) 8px max(16px,env(safe-area-inset-left));display:none;background:linear-gradient(180deg,rgba(10,14,26,.7) 0%,transparent 100%)}
+#hud.show{display:block}
+#hud-inner{max-width:720px;margin:0 auto;display:flex;justify-content:space-between;align-items:center}
+#hud-chapter{font-size:12px;color:#94a3b8;letter-spacing:1px}
+#hud-affections{display:flex;gap:12px;font-size:12px}
+.hud-aff{display:flex;align-items:center;gap:4px;opacity:0;transition:opacity .5s}
+.hud-aff.show{opacity:1}
+.hud-aff-dot{width:8px;height:8px;border-radius:50%;transition:all .5s}
+
+/* 菜单按钮 */
+#menu-btn{position:fixed;top:max(8px,env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right));z-index:60;width:36px;height:36px;border:none;background:rgba(255,255,255,.06);border-radius:8px;color:#94a3b8;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;display:none}
+#menu-btn.show{display:flex}
+#menu-btn:hover{background:rgba(255,255,255,.1);color:#e2e8f0}
+
+/* 菜单弹窗 */
+#menu-panel{position:fixed;inset:0;z-index:200;display:none;align-items:center;justify-content:center}
+#menu-panel.show{display:flex}
+#menu-overlay{position:absolute;inset:0;background:rgba(0,0,0,.6)}
+#menu-box{position:relative;background:rgba(15,23,42,.95);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-radius:16px;border:1px solid rgba(129,140,248,.12);padding:24px;width:min(380px,calc(100vw-32px));max-height:80vh;overflow-y:auto}
+#menu-box h3{color:#e2e8f0;font-size:18px;margin-bottom:16px;letter-spacing:1px}
+.menu-item{display:block;width:100%;padding:12px 16px;margin-bottom:8px;background:rgba(255,255,255,.04);border:1px solid rgba(129,140,248,.1);border-radius:8px;color:#cbd5e1;font-size:14px;cursor:pointer;text-align:left;transition:all .2s;font-family:inherit}
+.menu-item:hover{background:rgba(99,102,241,.15);border-color:rgba(99,102,241,.3);color:#e2e8f0}
+
+/* 存档槽 */
+.save-slot{display:block;width:100%;padding:10px 14px;margin-bottom:6px;background:rgba(255,255,255,.03);border:1px solid rgba(129,140,248,.08);border-radius:8px;color:#94a3b8;font-size:13px;cursor:pointer;text-align:left;transition:all .2s;font-family:inherit}
+.save-slot:hover{background:rgba(99,102,241,.1);border-color:rgba(99,102,241,.2)}
+.save-slot .time{color:#64748b;font-size:11px}
+.save-slot .preview{color:#cbd5e1;font-size:13px;display:block;margin-top:4px}
+
+/* 标题画面 */
+#title{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,rgba(10,14,26,.4) 0%,rgba(10,14,26,.85) 100%);cursor:pointer;transition:opacity .6s}
+#title.hide{opacity:0;pointer-events:none}
+#title h1{font-size:clamp(32px,8vw,56px);color:#e2e8f0;letter-spacing:6px;font-weight:300;animation:glow 3s ease-in-out infinite;text-shadow:0 0 20px rgba(129,140,248,.3)}
+@keyframes glow{0%,100%{opacity:1;text-shadow:0 0 20px rgba(129,140,248,.3)}50%{opacity:.85;text-shadow:0 0 40px rgba(129,140,248,.5)}}
+#title .sub{font-size:clamp(13px,3vw,16px);color:#64748b;margin-top:12px;letter-spacing:3px}
+#title .hint{font-size:clamp(12px,2.5vw,14px);color:#475569;margin-top:32px;animation:blink 2s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* 结局画面 */
+#ending{position:fixed;inset:0;z-index:200;display:none;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,rgba(10,14,26,.5) 0%,rgba(10,14,26,.9) 100%)}
+#ending.show{display:flex}
+#ending h2{font-size:clamp(24px,6vw,42px);color:#e2e8f0;letter-spacing:4px;font-weight:300;margin-bottom:16px}
+#ending p{font-size:clamp(14px,3vw,18px);color:#94a3b8;max-width:500px;text-align:center;line-height:2;padding:0 20px}
+#ending .btn{display:inline-block;margin-top:32px;padding:12px 32px;border:1px solid rgba(129,140,248,.2);border-radius:8px;color:#a5b4fc;font-size:14px;cursor:pointer;transition:all .2s;background:rgba(129,140,248,.06)}
+#ending .btn:hover{background:rgba(99,102,241,.15);border-color:rgba(99,102,241,.3)}
+
+/* 加载动画 */
+#loader{position:fixed;inset:0;z-index:300;display:flex;align-items:center;justify-content:center;background:#0a0e1a}
+#loader.hide{opacity:0;pointer-events:none;transition:opacity .5s}
+.loader-spinner{width:24px;height:24px;border:2px solid rgba(129,140,248,.1);border-top-color:#6366f1;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* 移动端触摸优化 */
+@media(max-width:480px){
+  #dialog-inner{padding:14px 14px;border-radius:10px}
+  #dialog-text{font-size:15px;line-height:1.7;min-height:2.6em}
+  #choices-inner{gap:8px}
+  .choice-btn{padding:13px 14px;font-size:14px;border-radius:8px}
 }
-
-/* ── 3-level breakpoints ── */
-
-/* Mobile < 375px — compact, full-width */
-@media (max-width: 374px) {
-  :root {
-    --dialog-maxw: 100%;
-    --choice-maxw: 100%;
-    --hud-maxw: 100%;
-    --menu-maxw: calc(100vw - 32px);
-    --spacing-h: 12px;
-    --spacing-v: 10px;
-  }
-}
-
-/* 375px — 767px (手机竖屏) */
-@media (min-width: 375px) and (max-width: 767px) {
-  :root {
-    --dialog-maxw: 100%;
-    --choice-maxw: 100%;
-    --hud-maxw: 100%;
-    --menu-maxw: calc(100vw - 40px);
-    --spacing-h: 16px;
-    --spacing-v: 14px;
-  }
-}
-
-/* 768px — 1279px (平板) */
-@media (min-width: 768px) and (max-width: 1279px) {
-  :root {
-    --dialog-maxw: min(720px, 90vw);
-    --choice-maxw: min(560px, 85vw);
-    --hud-maxw: 100%;
-    --menu-maxw: 420px;
-    --spacing-h: 32px;
-    --spacing-v: 16px;
-  }
-}
-
-/* 1280px+ (桌面) */
-@media (min-width: 1280px) {
-  :root {
-    --dialog-maxw: 800px;
-    --choice-maxw: 600px;
-    --hud-maxw: 1200px;
-    --menu-maxw: 440px;
-    --spacing-h: max(4vw, 32px);
-    --spacing-v: 16px;
-  }
-}
-
-/* ── Title screen ── */
-#title-screen {
-  padding: env(safe-area-inset-top, 20px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 20px) env(safe-area-inset-left, 0px);
-}
-
-/* ── DialogBox responsive ── */
-.dialogbox-wrapper {
-  padding-left: max(var(--spacing-h), env(safe-area-inset-left, 16px));
-  padding-right: max(var(--spacing-h), env(safe-area-inset-right, 16px));
-  padding-bottom: max(var(--spacing-v), env(safe-area-inset-bottom, 16px));
-}
-.dialogbox-bubble { max-width: var(--dialog-maxw); }
-
-/* ── ChoicePanel responsive ── */
-.choicepanel-wrapper {
-  padding-left: max(var(--spacing-h), env(safe-area-inset-left, 16px));
-  padding-right: max(var(--spacing-h), env(safe-area-inset-right, 16px));
-  padding-bottom: max(10vh, 80px, env(safe-area-inset-bottom, 16px));
-}
-.choicepanel-container { max-width: var(--choice-maxw); }
-
-/* ── HUD responsive ── */
-.hud-wrapper {
-  padding-left: max(var(--spacing-h), env(safe-area-inset-left, 24px));
-  padding-right: max(var(--spacing-h), env(safe-area-inset-right, 24px));
-  padding-top: env(safe-area-inset-top, 0px);
-}
-.hud-inner { max-width: var(--hud-maxw); margin: 0 auto; }
-
-@media (max-width: 374px) {
-  .hud-chapter { font-size: 10px; }
-  .hud-scene { font-size: 10px; }
-  .hud-dot { width: 8px; height: 8px; }
-}
-
-/* ── MenuUI responsive ── */
-.menu-panel {
-  width: min(var(--menu-maxw), calc(100vw - 32px));
-  max-height: calc(100vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 40px);
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-}
-.menu-toggle-btn {
-  right: max(4vw, 20px, env(safe-area-inset-right, 20px));
-  top: max(6px, env(safe-area-inset-top, 6px));
-}
-
-@media (max-width: 374px) {
-  .menu-panel { padding: 16px; border-radius: 10px; }
-}
-
-/* ── Scrollbar styling (menu panel) ── */
-.menu-panel::-webkit-scrollbar { width: 4px; }
-.menu-panel::-webkit-scrollbar-track { background: transparent; }
-.menu-panel::-webkit-scrollbar-thumb { background: rgba(129,140,248,0.25); border-radius: 2px; }
-
-/* ── DialogText responsive ── */
-@media (max-width: 374px) {
-  .dialogbox-text { font-size: 15px; }
-  .dialogbox-speaker { margin-bottom: 6px; }
+@media(min-width:1024px){
+  #dialog-inner{padding:20px 28px}
+  #dialog-text{font-size:17px}
 }
 </style>
 </head>
 <body>
-<div id="game-root"></div>
-<script type="module">// core/FlagSystem.js
-function FlagSystem() {
-  const state = {
-    // 6 核心变量
-    village_trust: 0,
-    star_understanding: 0,
-    knew_previous: false,
-    sided_with: "none",
-    has_star_ember: false,
-    truth_revealed: false,
-    // 3 好感度
-    affection_kael: 0,
-    affection_marcus: 0,
-    affection_lyra: 0,
-    // 道具旗标（v2.0 3件关键道具）
-    item_star_ember: false,
-    item_old_cloak: false,
-    item_kael_watch: false
-  };
-  const listeners = {};
-  function onChange(key, val) {
-    (listeners.change || []).forEach((fn) => fn({ key, value: val }));
-  }
-  return {
-    /** 获取任意旗标值 */
-    getFlag(key) {
-      return state[key];
-    },
-    /** 设置旗标值，触发 change 事件 */
-    setFlag(key, val) {
-      const old = state[key];
-      state[key] = val;
-      if (old !== val) onChange(key, val);
-    },
-    /** 检查旗标是否等于指定值（=== 比较） */
-    hasFlag(key, val) {
-      return state[key] === val;
-    },
-    /** 获取角色好感度 */
-    getAffection(charId) {
-      const key = "affection_" + charId;
-      return state[key] !== void 0 ? state[key] : 0;
-    },
-    /** 增加/减少好感度，返回新值 */
-    addAffection(charId, delta) {
-      const key = "affection_" + charId;
-      const current = state[key] !== void 0 ? state[key] : 0;
-      const next = Math.max(0, Math.min(10, current + delta));
-      state[key] = next;
-      onChange(key, next);
-      return next;
-    },
-    /** 获取完整状态快照（用于存档） */
-    getSnapshot() {
-      return { ...state };
-    },
-    /** 从快照恢复状态（用于读档） */
-    restoreSnapshot(snapshot) {
-      Object.keys(snapshot).forEach((k) => {
-        state[k] = snapshot[k];
-      });
-    },
-    /**
-     * 条件表达式求值
-     * 支持的语法:
-     *   "flag_xxx === true"
-     *   "flag_xxx === false"
-     *   "flag_xxx === 3"
-     *   "affection_kael >= 5"
-     *   "hasStarEmber"  (简写，等价于 flag_has_star_ember === true)
-     *   "affection_lyra > 0"
-     *   "flag_knew_previous === true"
-     *   "flag_sided_with === \"kael\""
-     *
-     * 返回 boolean
-     */
-    evaluateCondition(expr) {
-      if (!expr || expr === "true") return true;
-      if (expr === "false") return false;
-      if (/^[a-z][a-zA-Z0-9_]*$/.test(expr) && !expr.includes(" ")) {
-        const val = state[expr];
-        return val === true || val === 1 || val === "1";
-      }
-      const match = expr.match(
-        /^(flag_)?([a-zA-Z_]\w*)\s*(==|===|!==|!=|>=|<=|>|<)\s*(.+)$/
-      );
-      if (!match) {
-        console.warn("[FlagSystem] \u65E0\u6CD5\u89E3\u6790\u6761\u4EF6:", expr);
-        return false;
-      }
-      const key = match[2];
-      const op = match[3];
-      let right = match[4].trim();
-      let rVal;
-      if (right === "true") rVal = true;
-      else if (right === "false") rVal = false;
-      else if (/^\d+$/.test(right)) rVal = parseInt(right, 10);
-      else if (/^"(.+)"$/.test(right)) rVal = RegExp.$1;
-      else rVal = right;
-      const lVal = state[key];
-      switch (op) {
-        case "===":
-        case "==":
-          return lVal === rVal;
-        case "!==":
-        case "!=":
-          return lVal !== rVal;
-        case ">=":
-          return lVal >= rVal;
-        case "<=":
-          return lVal <= rVal;
-        case ">":
-          return lVal > rVal;
-        case "<":
-          return lVal < rVal;
-        default:
-          return false;
-      }
-    },
-    /** 订阅状态变化 */
-    onChange(fn) {
-      if (!listeners.change) listeners.change = [];
-      listeners.change.push(fn);
-      return () => {
-        listeners.change = (listeners.change || []).filter((f) => f !== fn);
-      };
-    }
-  };
-}
 
-// core/SceneManager.js
-function SceneManager({ scenes, container }) {
-  const SCENES2 = scenes || {};
-  let currentSceneId = null;
-  let currentScene = null;
-  const bgLayer = document.createElement("div");
-  Object.assign(bgLayer.style, {
-    position: "fixed",
-    inset: "0",
-    zIndex: "1",
-    transition: "opacity 0.3s ease, background 0.8s ease",
-    pointerEvents: "none"
-  });
-  const overlay = document.createElement("div");
-  Object.assign(overlay.style, {
-    position: "fixed",
-    inset: "0",
-    zIndex: "40",
-    pointerEvents: "none",
-    opacity: "0",
-    transition: "opacity 0.3s ease",
-    background: "#0a0e1a"
-  });
-  const root = container || document.body;
-  root.insertBefore(bgLayer, root.firstChild);
-  root.appendChild(overlay);
-  function applyBackground(scene) {
-    if (!scene) return;
-    const colors = scene.bg_color || ["#0a0e1a", "#1a2332"];
-    bgLayer.style.background = `radial-gradient(ellipse at center, ${colors[0]} 0%, ${colors[1]} 100%)`;
-  }
-  function updateMeta(scene) {
-    document.title = `\u661F\u843D\u4E4B\u591C \u2014 ${scene.name || ""}`;
-  }
-  const eventHandlers = {};
-  function emit(event, data) {
-    (eventHandlers[event] || []).forEach((h) => {
-      try {
-        h(data);
-      } catch (e) {
-        console.error("[SceneManager] \u4E8B\u4EF6\u9519\u8BEF:", e);
-      }
-    });
-  }
-  const api = {
-    /** DOM 层引用（供外部样式覆盖） */
-    bgLayer,
-    overlay,
-    /**
-     * 切换场景
-     * @param {string} sceneId
-     * @param {Object} [transition]
-     * @param {string} [transition.type='fade'] - 过渡类型
-     * @param {number} [transition.duration=400] - 过渡时长 (ms)
-     * @param {Function} [transition.onComplete] - 过渡完成回调
-     */
-    switchScene(sceneId, transition = {}) {
-      const scene = SCENES2[sceneId];
-      if (!scene) {
-        console.error(`[SceneManager] \u573A\u666F\u4E0D\u5B58\u5728: ${sceneId}`);
-        return;
-      }
-      const type = transition.type || "fade";
-      const duration = transition.duration || 400;
-      const prevSceneId = currentSceneId;
-      const prevScene = currentScene;
-      emit("beforeSwitch", {
-        from: prevSceneId,
-        to: sceneId,
-        transition: type
-      });
-      overlay.style.transition = `opacity ${duration}ms ease`;
-      overlay.style.opacity = "1";
-      overlay.style.background = "#0a0e1a";
-      setTimeout(() => {
-        currentSceneId = sceneId;
-        currentScene = scene;
-        applyBackground(scene);
-        updateMeta(scene);
-        overlay.style.opacity = "0";
-        setTimeout(() => {
-          emit("afterSwitch", {
-            from: prevSceneId,
-            to: sceneId,
-            scene
-          });
-          if (transition.onComplete) transition.onComplete(scene);
-        }, duration);
-      }, duration);
-    },
-    /**
-     * 立即切换到场景（无过渡动画）
-     * @param {string} sceneId
-     */
-    setScene(sceneId) {
-      const scene = SCENES2[sceneId];
-      if (!scene) {
-        console.error(`[SceneManager] \u573A\u666F\u4E0D\u5B58\u5728: ${sceneId}`);
-        return;
-      }
-      currentSceneId = sceneId;
-      currentScene = scene;
-      applyBackground(scene);
-      updateMeta(scene);
-      overlay.style.opacity = "0";
-      emit("afterSwitch", {
-        from: currentSceneId,
-        to: sceneId,
-        scene,
-        instant: true
-      });
-    },
-    /**
-     * 获取当前场景 ID
-     * @returns {string|null}
-     */
-    getCurrentSceneId() {
-      return currentSceneId;
-    },
-    /**
-     * 获取当前场景定义
-     * @returns {Object|null}
-     */
-    getCurrentScene() {
-      return currentScene || null;
-    },
-    /**
-     * 获取场景定义
-     * @param {string} sceneId
-     * @returns {Object|undefined}
-     */
-    getScene(sceneId) {
-      return SCENES2[sceneId];
-    },
-    /**
-     * 获取所有场景名称列表
-     * @returns {Array<{id, name}>}
-     */
-    getSceneList() {
-      return Object.keys(SCENES2).map((id) => ({
-        id,
-        name: SCENES2[id].name || id
-      }));
-    },
-    /**
-     * 淡入动画（用于标题画面等）
-     * @param {number} duration - 毫秒
-     */
-    fadeIn(duration = 500) {
-      overlay.style.transition = `opacity ${duration}ms ease`;
-      overlay.style.opacity = "0";
-    },
-    /**
-     * 淡出到黑
-     * @param {number} duration
-     * @param {Function} onComplete
-     */
-    fadeOut(duration = 500, onComplete) {
-      overlay.style.transition = `opacity ${duration}ms ease`;
-      overlay.style.opacity = "1";
-      overlay.style.background = "#0a0e1a";
-      if (onComplete) setTimeout(onComplete, duration);
-    },
-    /**
-     * 设置自定义渐变背景（临时覆盖场景背景）
-     * @param {string} gradientCSS - CSS gradient value
-     * @param {number} [duration=400]
-     */
-    setBackground(gradientCSS, duration = 400) {
-      bgLayer.style.transition = `background ${duration}ms ease`;
-      bgLayer.style.background = gradientCSS;
-    },
-    /**
-     * 重置到默认场景背景
-     */
-    resetBackground() {
-      if (currentScene) {
-        applyBackground(currentScene);
-      }
-    },
-    /** 事件订阅 */
-    on(event, handler) {
-      if (!eventHandlers[event]) eventHandlers[event] = [];
-      eventHandlers[event].push(handler);
-      return () => {
-        eventHandlers[event] = (eventHandlers[event] || []).filter(
-          (h) => h !== handler
-        );
-      };
-    },
-    /**
-     * 清理 DOM 挂载
-     */
-    destroy() {
-      if (bgLayer.parentNode) bgLayer.parentNode.removeChild(bgLayer);
-      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
-      eventHandlers.length = 0;
-    }
-  };
-  const sceneIds = Object.keys(SCENES2);
-  if (sceneIds.length > 0) {
-    api.setScene(sceneIds[0]);
-  }
-  return api;
-}
+<div id="loader"><div class="loader-spinner"></div></div>
+<div id="bg"><div id="bg-particles"></div></div>
+<div id="bg-overlay"></div>
 
-// core/SaveManager.js
-function SaveManager({ flags: flags2, storageKey = "starnight_save" }) {
-  const STORAGE_KEY = storageKey;
-  const MAX_SLOTS = 3;
-  function getStore() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      return raw ? JSON.parse(raw) : {};
-    } catch {
-      return {};
-    }
-  }
-  function writeStore(data) {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    } catch (e) {
-      console.error("[SaveManager] \u5199\u5165\u5B58\u50A8\u5931\u8D25:", e);
-    }
-  }
-  function makeSaveData(currentNodeId, sceneId, sceneName, nodePreview) {
-    const snapshot = flags2.getSnapshot();
-    const affection = {
-      kael: snapshot.affection_kael || 0,
-      marcus: snapshot.affection_marcus || 0,
-      lyra: snapshot.affection_lyra || 0
-    };
-    const coreFlags = {
-      village_trust: snapshot.village_trust,
-      star_understanding: snapshot.star_understanding,
-      knew_previous: snapshot.knew_previous,
-      sided_with: snapshot.sided_with,
-      has_star_ember: snapshot.has_star_ember,
-      truth_revealed: snapshot.truth_revealed
-    };
-    return {
-      flags: coreFlags,
-      affection,
-      fullSnapshot: snapshot,
-      currentNodeId: currentNodeId || "",
-      sceneId: sceneId || "",
-      sceneName: sceneName || "",
-      nodePreview: nodePreview || "",
-      timestamp: Date.now(),
-      version: "2.0"
-    };
-  }
-  return {
-    /**
-     * 手动保存到指定槽位
-     * @param {number|string} slot - 1, 2, 3 或 'auto'
-     * @param {Object} context - 存档上下文
-     * @param {string} context.currentNodeId
-     * @param {string} context.sceneId
-     * @param {string} [context.sceneName]
-     * @param {string} [context.nodePreview] - 对话文本预览（前20字）
-     */
-    save(slot, context) {
-      if (slot === "auto") {
-        return this.autoSave(context);
-      }
-      const numSlot = parseInt(slot, 10);
-      if (isNaN(numSlot) || numSlot < 1 || numSlot > MAX_SLOTS) {
-        console.warn(`[SaveManager] \u65E0\u6548\u5B58\u6863\u4F4D: ${slot}`);
-        return false;
-      }
-      const store = getStore();
-      store[String(numSlot)] = makeSaveData(
-        context.currentNodeId,
-        context.sceneId,
-        context.sceneName,
-        context.nodePreview
-      );
-      writeStore(store);
-      return true;
-    },
-    /**
-     * 从指定槽位读取存档
-     * @param {number|string} slot
-     * @returns {Object|null} 存档数据或 null
-     */
-    load(slot) {
-      const store = getStore();
-      const data = store[String(slot)];
-      if (!data) return null;
-      if (data.fullSnapshot) {
-        flags2.restoreSnapshot(data.fullSnapshot);
-      } else if (data.flags) {
-        Object.keys(data.flags).forEach((k) => {
-          flags2.setFlag(k, data.flags[k]);
-        });
-        if (data.affection) {
-          Object.keys(data.affection).forEach((charId) => {
-            const key = "affection_" + charId;
-            flags2.setFlag(key, data.affection[charId]);
-          });
-        }
-      }
-      return data;
-    },
-    /**
-     * 自动存档 (slot: 'auto')
-     * @param {Object} context
-     */
-    autoSave(context) {
-      const store = getStore();
-      store["auto"] = makeSaveData(
-        context.currentNodeId,
-        context.sceneId,
-        context.sceneName,
-        context.nodePreview
-      );
-      writeStore(store);
-      return true;
-    },
-    /**
-     * 获取所有存档位列表（含缩略信息）
-     * @returns {Array<{slot: string, timestamp: number, sceneName: string, nodePreview: string, exists: boolean}>}
-     */
-    getSaveList() {
-      const store = getStore();
-      const list = [];
-      for (let i = 1; i <= MAX_SLOTS; i++) {
-        const data = store[String(i)];
-        list.push({
-          slot: String(i),
-          exists: !!data,
-          timestamp: data ? data.timestamp : 0,
-          sceneName: data ? data.sceneName || "\u672A\u77E5\u573A\u666F" : "",
-          nodePreview: data ? (data.nodePreview || "").slice(0, 30) : "",
-          affection: data ? data.affection : null,
-          currentNodeId: data ? data.currentNodeId : null,
-          sceneId: data ? data.sceneId : null
-        });
-      }
-      const auto = store["auto"];
-      list.push({
-        slot: "auto",
-        label: "\u81EA\u52A8\u5B58\u6863",
-        exists: !!auto,
-        timestamp: auto ? auto.timestamp : 0,
-        sceneName: auto ? auto.sceneName || "\u672A\u77E5\u573A\u666F" : "",
-        nodePreview: auto ? (auto.nodePreview || "").slice(0, 30) : "",
-        affection: auto ? auto.affection : null,
-        currentNodeId: auto ? auto.currentNodeId : null,
-        sceneId: auto ? auto.sceneId : null
-      });
-      return list;
-    },
-    /**
-     * 删除指定存档
-     * @param {number|string} slot
-     */
-    deleteSave(slot) {
-      const store = getStore();
-      delete store[String(slot)];
-      writeStore(store);
-    },
-    /**
-     * 格式化时间戳
-     * @param {number} ts
-     * @returns {string}
-     */
-    formatTimestamp(ts) {
-      if (!ts) return "\u2014";
-      const d = new Date(ts);
-      const pad = (n) => String(n).padStart(2, "0");
-      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(
-        d.getDate()
-      )} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    },
-    /**
-     * 清除所有存档
-     */
-    clearAll() {
-      localStorage.removeItem(STORAGE_KEY);
-    },
-    /**
-     * 检查指定槽位是否有存档
-     * @param {number|string} slot
-     * @returns {boolean}
-     */
-    hasSave(slot) {
-      const store = getStore();
-      return !!store[String(slot)];
-    }
-  };
-}
+<div id="title">
+  <h1>星落之夜</h1>
+  <div class="sub">星辰失序，选择重写命运</div>
+  <div class="hint">✦ 点击开始 ✦</div>
+</div>
 
-// core/DialogueEngine.js
-function DialogueEngine({ flags: flags2 }) {
-  const nodeMap = /* @__PURE__ */ new Map();
-  let currentNode = null;
-  let currentNodeId = null;
-  let typingBuffer = "";
-  let typingIndex = 0;
-  let typingActive = false;
-  let typingSpeed = 50;
-  let typingTimer = null;
-  const eventHandlers = {};
-  function on(event, handler) {
-    if (!eventHandlers[event]) eventHandlers[event] = [];
-    eventHandlers[event].push(handler);
-    return () => {
-      eventHandlers[event] = (eventHandlers[event] || []).filter(
-        (h) => h !== handler
-      );
-    };
-  }
-  function emit(event, data) {
-    (eventHandlers[event] || []).forEach((h) => {
-      try {
-        h(data);
-      } catch (e) {
-        console.error(`[DialogueEngine] \u4E8B\u4EF6\u5904\u7406\u5668\u9519\u8BEF (${event}):`, e);
-      }
-    });
-  }
-  function tickTyping() {
-    if (typingIndex < typingBuffer.length) {
-      const ch = typingBuffer[typingIndex];
-      typingIndex++;
-      emit("typingChar", {
-        char: ch,
-        progress: typingIndex / typingBuffer.length,
-        fullText: typingBuffer
-      });
-    }
-    if (typingIndex >= typingBuffer.length) {
-      stopTyping();
-    }
-  }
-  function startTyping(text) {
-    stopTyping();
-    typingBuffer = text || "";
-    typingIndex = 0;
-    typingActive = true;
-    typingTimer = setInterval(tickTyping, typingSpeed);
-    emit("typingChar", {
-      char: "",
-      progress: 0,
-      fullText: typingBuffer
-    });
-  }
-  function stopTyping() {
-    if (typingTimer) {
-      clearInterval(typingTimer);
-      typingTimer = null;
-    }
-    typingActive = false;
-    typingIndex = typingBuffer.length;
-  }
-  function applyEffects(effects) {
-    if (!effects || typeof effects !== "object") return;
-    const affChanges = [];
-    Object.keys(effects).forEach((k) => {
-      const val = effects[k];
-      if (k.startsWith("affection_")) {
-        const charId = k.replace("affection_", "");
-        if (typeof val === "number") {
-          const newVal = flags2.addAffection(charId, val);
-          affChanges.push({ charId, delta: val, newVal });
-        }
-      } else {
-        flags2.setFlag(k, val);
-      }
-    });
-    return affChanges;
-  }
-  function enterNode(node) {
-    if (!node) {
-      console.warn("[DialogueEngine] enterNode: \u8282\u70B9\u4E3A\u7A7A");
-      return;
-    }
-    currentNode = node;
-    currentNodeId = node.id;
-    if (node.effect) {
-      applyEffects(node.effect);
-    }
-    if (node.scene) {
-      emit("sceneChange", node.scene);
-    }
-    emit("nodeStart", {
-      id: node.id,
-      speaker: node.speaker || null,
-      text: node.text || "",
-      mode: node.mode || "dialogue"
-    });
-    startTyping(node.text || "");
-    return node;
-  }
-  const api = {
-    /**
-     * 加载对话节点列表
-     * @param {Array} nodes - 节点数组
-     */
-    loadDialogue(nodes) {
-      nodeMap.clear();
-      if (Array.isArray(nodes)) {
-        nodes.forEach((n) => {
-          if (n && n.id) nodeMap.set(n.id, n);
-        });
-      }
-    },
-    /**
-     * 开始对话（从指定节点）
-     * @param {string} nodeId
-     */
-    start(nodeId) {
-      const node = nodeMap.get(nodeId);
-      if (!node) {
-        console.error(`[DialogueEngine] \u8D77\u59CB\u8282\u70B9\u4E0D\u5B58\u5728: ${nodeId}`);
-        return;
-      }
-      enterNode(node);
-    },
-    /**
-     * 获取当前对话节点
-     * @returns {Object|null}
-     */
-    getCurrentNode() {
-      return currentNode || null;
-    },
-    /**
-     * 获取指定节点
-     * @param {string} nodeId
-     * @returns {Object|undefined}
-     */
-    getNode(nodeId) {
-      return nodeMap.get(nodeId);
-    },
-    /**
-     * 玩家选择选项
-     * @param {number} index - 选项索引（在可用选项中）
-     * @returns {boolean} 是否成功跳转
-     */
-    selectChoice(index) {
-      const choices = api.getAvailableChoices();
-      if (index < 0 || index >= choices.length) {
-        console.warn(`[DialogueEngine] \u65E0\u6548\u9009\u9879\u7D22\u5F15: ${index}`);
-        return false;
-      }
-      const choice = choices[index];
-      emit("choice", {
-        choiceIndex: index,
-        choiceText: choice.text,
-        nextNodeId: choice.next,
-        effects: choice.effects || null
-      });
-      const affChanges = applyEffects(choice.effects);
-      if (choice.next) {
-        const nextNode = nodeMap.get(choice.next);
-        if (nextNode) {
-          emit("nodeEnd", {
-            nodeId: currentNodeId,
-            nextNodeId: choice.next,
-            choiceIndex: index,
-            affectionChanges: affChanges || []
-          });
-          enterNode(nextNode);
-          return true;
-        } else {
-          console.error(
-            `[DialogueEngine] \u8DF3\u8F6C\u76EE\u6807\u8282\u70B9\u4E0D\u5B58\u5728: ${choice.next}`
-          );
-        }
-      } else {
-        emit("nodeEnd", {
-          nodeId: currentNodeId,
-          nextNodeId: null,
-          choiceIndex: index,
-          affectionChanges: affChanges || [],
-          isEnd: true
-        });
-        currentNode = null;
-        currentNodeId = null;
-        return true;
-      }
-      return false;
-    },
-    /**
-     * 获取当前可用的选项列表（已过滤条件）
-     * @returns {Array<{text, next, condition, effects}>}
-     */
-    getAvailableChoices() {
-      if (!currentNode || !currentNode.choices) return [];
-      return currentNode.choices.filter((c) => {
-        if (!c.condition) return true;
-        if (typeof c.condition === "function") return c.condition(flags2);
-        return flags2.evaluateCondition(c.condition);
-      });
-    },
-    /**
-     * 获取打字机下一个字符（用于外部 UI 消费）
-     * @returns {{char: string, done: boolean}}
-     */
-    getChar() {
-      if (!typingActive) {
-        return { char: "", done: true };
-      }
-      if (typingIndex < typingBuffer.length) {
-        const ch = typingBuffer[typingIndex];
-        typingIndex++;
-        return { char: ch, done: false };
-      }
-      stopTyping();
-      return { char: "", done: true };
-    },
-    /**
-     * 是否正在打字
-     * @returns {boolean}
-     */
-    isTyping() {
-      return typingActive;
-    },
-    /**
-     * 跳过打字，立即显示完整文本
-     */
-    skipTyping() {
-      if (!typingActive) return;
-      stopTyping();
-      typingIndex = typingBuffer.length;
-      emit("typingChar", {
-        char: "",
-        progress: 1,
-        fullText: typingBuffer,
-        skipped: true
-      });
-    },
-    /**
-     * 打字完成百分比
-     * @returns {number} 0~1
-     */
-    getTypingProgress() {
-      if (typingBuffer.length === 0) return 1;
-      return typingIndex / typingBuffer.length;
-    },
-    /** 事件注册 */
-    on,
-    /** 事件发射 */
-    emit,
-    /** 手动设置打字速度 (ms/char) */
-    setTypingSpeed(ms) {
-      typingSpeed = Math.max(10, ms);
-      if (typingActive) {
-        clearInterval(typingTimer);
-        typingTimer = setInterval(tickTyping, typingSpeed);
-      }
-    },
-    /**
-     * 跳转到指定节点（无打字效果，直接切换）
-     * @param {string} nodeId
-     */
-    jump(nodeId) {
-      const node = nodeMap.get(nodeId);
-      if (!node) {
-        console.error(`[DialogueEngine] \u8DF3\u8F6C\u76EE\u6807\u4E0D\u5B58\u5728: ${nodeId}`);
-        return;
-      }
-      stopTyping();
-      emit("nodeEnd", {
-        nodeId: currentNodeId,
-        nextNodeId: nodeId,
-        isJump: true
-      });
-      enterNode(node);
-    },
-    /**
-     * 重新加载当前节点
-     */
-    reload() {
-      if (currentNodeId) {
-        enterNode(nodeMap.get(currentNodeId));
-      }
-    },
-    /**
-     * 获取节点总数
-     */
-    getNodeCount() {
-      return nodeMap.size;
-    },
-    /**
-     * 获取指定场景的所有节点ID列表
-     * @param {string} sceneId
-     * @returns {string[]}
-     */
-    getNodesByScene(sceneId) {
-      const ids = [];
-      nodeMap.forEach((n, id) => {
-        if (n.scene === sceneId) ids.push(id);
-      });
-      return ids;
-    }
-  };
-  return api;
-}
+<div id="hud">
+  <div id="hud-inner">
+    <span id="hud-chapter"></span>
+    <div id="hud-affections"></div>
+  </div>
+</div>
 
-// ui/DialogBox.js
-function DialogBox(opts) {
-  const { render, engine: engine2, characters } = opts;
-  const cleanupFns = [];
-  const CHARACTERS2 = characters || {};
-  let typingBuffer = "";
-  let typingProgress = 1;
-  let isTypingActive = false;
-  let mode = "dialogue";
-  let currentSpeaker = null;
-  let isVisible = false;
-  const wrapper = document.createElement("div");
-  wrapper.className = "dialogbox-wrapper";
-  Object.assign(wrapper.style, {
-    position: "fixed",
-    bottom: "0",
-    left: "0",
-    right: "0",
-    zIndex: "50",
-    pointerEvents: "auto",
-    display: "none",
-    opacity: "0",
-    transition: "opacity 0.3s ease"
-  });
-  const bubble = document.createElement("div");
-  bubble.className = "dialogbox-bubble";
-  Object.assign(bubble.style, {
-    margin: "0 auto",
-    maxWidth: "800px",
-    background: "rgba(26, 35, 50, 0.85)",
-    backdropFilter: "blur(16px)",
-    WebkitBackdropFilter: "blur(16px)",
-    borderRadius: "12px",
-    border: "1px solid rgba(129, 140, 248, 0.12)",
-    padding: "16px 20px",
-    position: "relative",
-    cursor: "pointer",
-    userSelect: "none"
-  });
-  const speakerRow = document.createElement("div");
-  speakerRow.className = "dialogbox-speaker";
-  Object.assign(speakerRow.style, {
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    marginBottom: "8px"
-  });
-  const avatarEl = document.createElement("span");
-  avatarEl.className = "dialogbox-avatar";
-  Object.assign(avatarEl.style, {
-    width: "32px",
-    height: "32px",
-    borderRadius: "50%",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: "18px",
-    background: "rgba(129, 140, 248, 0.15)",
-    border: "1px solid rgba(129, 140, 248, 0.25)",
-    flexShrink: "0"
-  });
-  const nameEl = document.createElement("span");
-  nameEl.className = "dialogbox-name";
-  Object.assign(nameEl.style, {
-    fontSize: "14px",
-    fontWeight: "600",
-    color: "#a5b4fc",
-    fontFamily: "system-ui, sans-serif",
-    letterSpacing: "0.5px"
-  });
-  speakerRow.appendChild(avatarEl);
-  speakerRow.appendChild(nameEl);
-  const textEl = document.createElement("div");
-  textEl.className = "dialogbox-text";
-  Object.assign(textEl.style, {
-    fontSize: "16px",
-    lineHeight: "1.8",
-    color: "#e2e8f0",
-    fontFamily: "system-ui, sans-serif",
-    minHeight: "2.8em",
-    paddingLeft: "4px",
-    whiteSpace: "pre-wrap",
-    wordBreak: "break-word"
-  });
-  const indicatorRow = document.createElement("div");
-  indicatorRow.className = "dialogbox-indicator";
-  Object.assign(indicatorRow.style, {
-    display: "flex",
-    justifyContent: "flex-end",
-    alignItems: "center",
-    marginTop: "6px",
-    minHeight: "20px"
-  });
-  const indicatorEl = document.createElement("span");
-  indicatorEl.className = "dialogbox-indicator-text";
-  Object.assign(indicatorEl.style, {
-    fontSize: "12px",
-    color: "#94a3b8",
-    fontFamily: "system-ui, sans-serif",
-    transition: "opacity 0.2s ease"
-  });
-  indicatorRow.appendChild(indicatorEl);
-  bubble.appendChild(speakerRow);
-  bubble.appendChild(textEl);
-  bubble.appendChild(indicatorRow);
-  wrapper.appendChild(bubble);
-  bubble.addEventListener("click", () => {
-    if (isTypingActive) {
-      if (engine2 && engine2.skipTyping) {
-        engine2.skipTyping();
-      } else {
-        skipTyping();
-      }
-    } else {
-      if (engine2 && engine2.emit) {
-        engine2.emit("nodeEnd", { clicked: true });
-      }
-    }
-  });
-  function clearTypingBuffer() {
-    isTypingActive = false;
-    typingBuffer = "";
-    typingProgress = 1;
-  }
-  function updateIndicator(typing) {
-    if (typing) {
-      indicatorEl.textContent = "\u258D \u6B63\u5728\u8BB2\u8FF0...";
-      indicatorEl.style.color = "#94a3b8";
-    } else {
-      indicatorEl.textContent = "\u25BC \u70B9\u51FB\u7EE7\u7EED";
-      indicatorEl.style.color = "#a5b4fc";
-    }
-  }
-  const api = {
-    /** DOM 根元素 */
-    element: wrapper,
-    /** 显示对话框 */
-    show() {
-      isVisible = true;
-      wrapper.style.display = "block";
-      wrapper.offsetHeight;
-      wrapper.style.opacity = "1";
-    },
-    /**
-     * 开始显示节点对话数据（由 main.js 在 nodeStart 时调用）
-     * @param {Object} nodeData - 节点数据 { id, speaker, text, mode }
-     */
-    startNode(nodeData) {
-      if (!nodeData) return;
-      this.show();
-      this.typeText(nodeData.text || "", nodeData.speaker || null, nodeData.mode || "dialogue");
-    },
-    /** 隐藏对话框 */
-    hide() {
-      isVisible = false;
-      clearTypingBuffer();
-      wrapper.style.opacity = "0";
-      setTimeout(() => {
-        if (!isVisible) wrapper.style.display = "none";
-      }, 300);
-    },
-    /** 设置模式 */
-    setMode(newMode) {
-      mode = newMode;
-      textEl.style.fontStyle = mode === "inner_monologue" ? "italic" : "normal";
-      textEl.style.opacity = mode === "inner_monologue" ? "0.85" : "1";
-    },
-    /** 设置说话者，null = 旁白 */
-    setSpeaker(speakerId) {
-      if (!speakerId || !CHARACTERS2[speakerId]) {
-        currentSpeaker = null;
-        speakerRow.style.display = "none";
-        avatarEl.textContent = "";
-        nameEl.textContent = "";
-        this.setMode("narration");
-        return;
-      }
-      const char = CHARACTERS2[speakerId];
-      currentSpeaker = { id: speakerId, ...char };
-      speakerRow.style.display = "flex";
-      avatarEl.textContent = char.emoji || "\u2728";
-      avatarEl.style.background = char.color ? `${char.color}22` : "rgba(129, 140, 248, 0.15)";
-      avatarEl.style.borderColor = char.color ? `${char.color}44` : "rgba(129, 140, 248, 0.25)";
-      nameEl.textContent = char.name || speakerId;
-      nameEl.style.color = char.color || "#a5b4fc";
-      this.setMode("dialogue");
-    },
-    /**
-     * 开始打字输出
-     * @param {string} text — 完整文本
-     * @param {string|null} speakerId — 说话者ID，null=旁白
-     * @param {string} [modeOverride] — 可选模式覆盖
-     */
-    typeText(text, speakerId, modeOverride) {
-      clearTypingBuffer();
-      textEl.textContent = "";
-      typingBuffer = text || "";
-      typingProgress = 0;
-      isTypingActive = true;
-      if (modeOverride) {
-        this.setMode(modeOverride);
-      }
-      this.setSpeaker(speakerId);
-      if (!speakerId) {
-        textEl.style.textAlign = "center";
-        textEl.style.color = "#94a3b8";
-      } else {
-        textEl.style.textAlign = "left";
-        textEl.style.color = "#e2e8f0";
-      }
-      updateIndicator(true);
-      textEl.textContent = "";
-    },
-    /** 立即完成打字（不触发 nodeEnd） */
-    skipTyping() {
-      if (!isTypingActive) return;
-      clearTypingBuffer();
-      textEl.textContent = typingBuffer;
-      updateIndicator(false);
-    },
-    /** 显示指定进度的文本（由引擎 typingChar 事件驱动） */
-    setTypingProgress(progress, fullText) {
-      if (!isTypingActive) return;
-      typingProgress = progress;
-      typingBuffer = fullText || typingBuffer;
-      const charsToShow = Math.floor(typingBuffer.length * progress);
-      textEl.textContent = typingBuffer.slice(0, charsToShow);
-      if (progress >= 1) {
-        clearTypingBuffer();
-        updateIndicator(false);
-      }
-    },
-    /** 清空内容 */
-    clear() {
-      clearTypingBuffer();
-      textEl.textContent = "";
-      updateIndicator(false);
-    },
-    /** 销毁，清理事件和DOM */
-    destroy() {
-      clearTypingBuffer();
-      cleanupFns.forEach((fn) => fn());
-      cleanupFns.length = 0;
-      if (wrapper.parentNode) {
-        wrapper.parentNode.removeChild(wrapper);
-      }
-    },
-    /** 是否正在打字 */
-    get isTyping() {
-      return isTypingActive;
-    },
-    /** 当前是否可见 */
-    get showing() {
-      return isVisible;
-    }
-  };
-  if (engine2 && engine2.on) {
-    const offTypingChar = engine2.on("typingChar", (data) => {
-      if (data && data.progress !== void 0) {
-        api.setTypingProgress(data.progress, data.fullText);
-      }
-    });
-    cleanupFns.push(offTypingChar);
-  }
-  if (render) {
-    render(wrapper, document.body);
-  }
-  return api;
-}
+<div id="dialog">
+  <div id="dialog-inner">
+    <div id="dialog-speaker"><span id="dialog-avatar"></span><span id="dialog-name"></span></div>
+    <div id="dialog-text"></div>
+    <div id="dialog-indicator"></div>
+  </div>
+</div>
 
-// ui/ChoicePanel.js
-function ChoicePanel(opts) {
-  const { render, engine: engine2, evaluateCondition } = opts;
-  const cleanupFns = [];
-  let choices = [];
-  let isAnimating = false;
-  let isVisible = false;
-  const wrapper = document.createElement("div");
-  wrapper.className = "choicepanel-wrapper";
-  Object.assign(wrapper.style, {
-    position: "fixed",
-    bottom: "0",
-    left: "0",
-    right: "0",
-    zIndex: "45",
-    pointerEvents: "none",
-    display: "none",
-    opacity: "0",
-    transition: "opacity 0.3s ease"
-  });
-  const container = document.createElement("div");
-  container.className = "choicepanel-container";
-  Object.assign(container.style, {
-    margin: "0 auto",
-    display: "flex",
-    flexDirection: "column",
-    gap: "6px"
-  });
-  wrapper.appendChild(container);
-  function createChoiceItem(choice, index) {
-    const isAvailable = choice.condition ? evaluateCondition ? evaluateCondition(choice.condition) : false : true;
-    const item = document.createElement("div");
-    item.className = "choicepanel-item";
-    item.dataset.index = index;
-    item.dataset.available = isAvailable ? "true" : "false";
-    Object.assign(item.style, {
-      display: "flex",
-      alignItems: "center",
-      gap: "12px",
-      padding: "12px 16px",
-      borderRadius: "10px",
-      background: isAvailable ? "rgba(26, 35, 50, 0.75)" : "rgba(26, 35, 50, 0.4)",
-      backdropFilter: "blur(8px)",
-      WebkitBackdropFilter: "blur(8px)",
-      border: isAvailable ? "1px solid rgba(129, 140, 248, 0.2)" : "1px solid rgba(100, 116, 139, 0.15)",
-      cursor: isAvailable ? "pointer" : "not-allowed",
-      transition: "all 0.25s ease",
-      opacity: isAvailable ? "1" : "0.45",
-      pointerEvents: isAvailable ? "auto" : "none",
-      userSelect: "none"
-    });
-    const star = document.createElement("span");
-    star.className = "choicepanel-star";
-    Object.assign(star.style, {
-      fontSize: "14px",
-      color: isAvailable ? "#fbbf24" : "#475569",
-      width: "20px",
-      textAlign: "center",
-      flexShrink: "0",
-      transition: "transform 0.3s ease, color 0.3s ease"
-    });
-    star.textContent = "\u2726";
-    item.appendChild(star);
-    const text = document.createElement("span");
-    text.className = "choicepanel-text";
-    Object.assign(text.style, {
-      fontSize: "15px",
-      lineHeight: "1.5",
-      color: isAvailable ? "#e2e8f0" : "#64748b",
-      fontFamily: "system-ui, sans-serif",
-      flex: "1"
-    });
-    text.textContent = choice.text;
-    item.appendChild(text);
-    if (isAvailable) {
-      item.addEventListener("mouseenter", () => {
-        item.style.background = "rgba(99, 102, 241, 0.25)";
-        item.style.borderColor = "rgba(99, 102, 241, 0.4)";
-        star.style.transform = "scale(1.3)";
-        star.style.color = "#f59e0b";
-      });
-      item.addEventListener("mouseleave", () => {
-        item.style.background = "rgba(26, 35, 50, 0.75)";
-        item.style.borderColor = "rgba(129, 140, 248, 0.2)";
-        star.style.transform = "scale(1)";
-        star.style.color = "#fbbf24";
-      });
-      item.addEventListener("touchstart", () => {
-        item.style.background = "rgba(99, 102, 241, 0.25)";
-        item.style.borderColor = "rgba(99, 102, 241, 0.4)";
-        star.style.transform = "scale(1.3)";
-        star.style.color = "#f59e0b";
-      }, { passive: true });
-      item.addEventListener("touchend", () => {
-        item.style.background = "rgba(26, 35, 50, 0.75)";
-        item.style.borderColor = "rgba(129, 140, 248, 0.2)";
-        star.style.transform = "scale(1)";
-        star.style.color = "#fbbf24";
-      }, { passive: true });
-      item.addEventListener("click", () => {
-        if (isAnimating) return;
-        selectChoice(index);
-      });
-    }
-    return item;
-  }
-  function selectChoice(index) {
-    if (isAnimating) return;
-    isAnimating = true;
-    const choice = choices[index];
-    if (!choice) return;
-    const items = container.querySelectorAll(".choicepanel-item");
-    const selectedItem = items[index];
-    if (!selectedItem) return;
-    const star = selectedItem.querySelector(".choicepanel-star");
-    if (star) {
-      star.style.transform = "scale(1.8)";
-      star.style.color = "#fbbf24";
-      star.style.textShadow = "0 0 12px #fbbf24";
-    }
-    selectedItem.style.background = "rgba(99, 102, 241, 0.3)";
-    selectedItem.style.borderColor = "#fbbf24";
-    items.forEach((item, i) => {
-      if (i !== index) {
-        item.style.opacity = "0.2";
-        item.style.transform = "translateX(-10px)";
-      }
-    });
-    setTimeout(() => {
-      wrapper.style.opacity = "0";
-      setTimeout(() => {
-        if (engine2 && engine2.selectChoice) {
-          engine2.selectChoice(index);
-        }
-        isAnimating = false;
-      }, 250);
-    }, 400);
-  }
-  const api = {
-    element: wrapper,
-    /** 显示选项 */
-    show(newChoices) {
-      choices = newChoices || [];
-      if (choices.length > 4) {
-        choices = choices.slice(0, 4);
-      }
-      container.innerHTML = "";
-      choices.forEach((c, i) => {
-        container.appendChild(createChoiceItem(c, i));
-      });
-      isAnimating = false;
-      isVisible = true;
-      wrapper.style.display = "block";
-      wrapper.offsetHeight;
-      wrapper.style.opacity = "1";
-    },
-    /** 隐藏 */
-    hide() {
-      isVisible = false;
-      wrapper.style.opacity = "0";
-      setTimeout(() => {
-        if (!isVisible) wrapper.style.display = "none";
-        container.innerHTML = "";
-      }, 300);
-    },
-    /** 刷新条件（重新计算可用性） */
-    refreshConditions() {
-      const items = container.querySelectorAll(".choicepanel-item");
-      items.forEach((item, i) => {
-        const choice = choices[i];
-        if (!choice) return;
-        const wasAvailable = item.dataset.available === "true";
-        const isAvailable = choice.condition ? evaluateCondition ? evaluateCondition(choice.condition) : false : true;
-        if (wasAvailable !== isAvailable) {
-          item.dataset.available = isAvailable ? "true" : "false";
-          item.style.opacity = isAvailable ? "1" : "0.45";
-          item.style.cursor = isAvailable ? "pointer" : "not-allowed";
-          item.style.pointerEvents = isAvailable ? "auto" : "none";
-          item.style.background = isAvailable ? "rgba(26, 35, 50, 0.75)" : "rgba(26, 35, 50, 0.4)";
-        }
-      });
-    },
-    /** 销毁 */
-    destroy() {
-      cleanupFns.forEach((fn) => fn());
-      cleanupFns.length = 0;
-      if (wrapper.parentNode) {
-        wrapper.parentNode.removeChild(wrapper);
-      }
-    }
-  };
-  if (render) {
-    render(wrapper, document.body);
-  }
-  return api;
-}
+<div id="choices"><div id="choices-inner"></div></div>
 
-// ui/HUD.js
-function HUD(opts) {
-  const { render, flagSystem, affectionCharacters } = opts;
-  const CHAR_IDS = affectionCharacters && affectionCharacters.length >= 3 ? affectionCharacters.slice(0, 3) : [
-    { id: "kael", label: "\u51EF\u5C14" },
-    { id: "marcus", label: "\u9A6C\u5E93\u65AF" },
-    { id: "lyra", label: "\u8389\u62C9" }
-  ];
-  let chapterName = "";
-  let sceneName = "";
-  let isVisible = false;
-  const wrapper = document.createElement("div");
-  wrapper.className = "hud-wrapper";
-  Object.assign(wrapper.style, {
-    position: "fixed",
-    top: "0",
-    left: "0",
-    right: "0",
-    zIndex: "60",
-    height: "36px",
-    display: "none",
-    opacity: "0",
-    transition: "opacity 0.3s ease",
-    background: "rgba(10, 14, 26, 0.6)",
-    backdropFilter: "blur(10px)",
-    WebkitBackdropFilter: "blur(10px)",
-    borderBottom: "1px solid rgba(129, 140, 248, 0.08)"
-  });
-  const inner = document.createElement("div");
-  inner.className = "hud-inner";
-  Object.assign(inner.style, {
-    height: "100%",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between"
-  });
-  wrapper.appendChild(inner);
-  const leftGroup = document.createElement("div");
-  Object.assign(leftGroup.style, {
-    display: "flex",
-    alignItems: "center",
-    gap: "10px"
-  });
-  const chapterEl = document.createElement("span");
-  chapterEl.className = "hud-chapter";
-  Object.assign(chapterEl.style, {
-    fontSize: "12px",
-    fontWeight: "600",
-    color: "#a5b4fc",
-    fontFamily: "system-ui, sans-serif",
-    letterSpacing: "1px",
-    textTransform: "uppercase"
-  });
-  const sceneEl = document.createElement("span");
-  sceneEl.className = "hud-scene";
-  Object.assign(sceneEl.style, {
-    fontSize: "12px",
-    color: "#94a3b8",
-    fontFamily: "system-ui, sans-serif"
-  });
-  const sep = document.createElement("span");
-  sep.textContent = "/";
-  Object.assign(sep.style, {
-    fontSize: "12px",
-    color: "#475569"
-  });
-  leftGroup.appendChild(chapterEl);
-  leftGroup.appendChild(sep);
-  leftGroup.appendChild(sceneEl);
-  inner.appendChild(leftGroup);
-  const rightGroup = document.createElement("div");
-  Object.assign(rightGroup.style, {
-    display: "flex",
-    alignItems: "center",
-    gap: "10px"
-  });
-  const dotContainer = document.createElement("div");
-  Object.assign(dotContainer.style, {
-    display: "flex",
-    alignItems: "center",
-    gap: "6px"
-  });
-  const dots = {};
-  CHAR_IDS.forEach((char) => {
-    const dot = document.createElement("span");
-    dot.className = `hud-dot hud-dot-${char.id}`;
-    dot.title = char.label;
-    Object.assign(dot.style, {
-      width: "10px",
-      height: "10px",
-      borderRadius: "50%",
-      display: "inline-block",
-      transition: "background 0.4s ease, box-shadow 0.4s ease"
-    });
-    dotContainer.appendChild(dot);
-    dots[char.id] = dot;
-  });
-  rightGroup.appendChild(dotContainer);
-  inner.appendChild(rightGroup);
-  function affectionColor(value) {
-    if (value >= 8) return "#34d399";
-    if (value >= 5) return "#a5b4fc";
-    if (value >= 2) return "#94a3b8";
-    return "#475569";
-  }
-  function affectionGlow(value) {
-    if (value >= 8) return "0 0 6px rgba(52, 211, 153, 0.5)";
-    return "none";
-  }
-  const api = {
-    element: wrapper,
-    show() {
-      isVisible = true;
-      wrapper.style.display = "block";
-      wrapper.offsetHeight;
-      wrapper.style.opacity = "1";
-    },
-    hide() {
-      isVisible = false;
-      wrapper.style.opacity = "0";
-      setTimeout(() => {
-        if (!isVisible) wrapper.style.display = "none";
-      }, 300);
-    },
-    /** 设置场景标题 */
-    setScene(chapter, scene) {
-      chapterName = chapter || "";
-      sceneName = scene || "";
-      chapterEl.textContent = chapterName;
-      sceneEl.textContent = sceneName;
-    },
-    /** 刷新好感度显示 */
-    refreshAffections() {
-      if (!flagSystem || !flagSystem.getAffection) return;
-      CHAR_IDS.forEach((char) => {
-        const val = flagSystem.getAffection(char.id);
-        if (dots[char.id]) {
-          dots[char.id].style.background = affectionColor(val);
-          dots[char.id].style.boxShadow = affectionGlow(val);
-        }
-      });
-    },
-    /** 销毁 */
-    destroy() {
-      if (wrapper.parentNode) {
-        wrapper.parentNode.removeChild(wrapper);
-      }
-    }
-  };
-  if (render) {
-    render(wrapper, document.body);
-  }
-  return api;
-}
+<button id="menu-btn">≡</button>
 
-// ui/MenuUI.js
-function MenuUI(opts) {
-  const { render, saveManager: saveManager2, sceneManager: sceneManager2 } = opts;
-  let isOpen = false;
-  let currentView = "main";
-  const toggleBtn = document.createElement("button");
-  toggleBtn.className = "menu-toggle-btn";
-  toggleBtn.textContent = "\u2261";
-  toggleBtn.title = "\u83DC\u5355";
-  Object.assign(toggleBtn.style, {
-    position: "fixed",
-    zIndex: "70",
-    width: "28px",
-    height: "28px",
-    border: "1px solid rgba(129, 140, 248, 0.2)",
-    borderRadius: "6px",
-    background: "rgba(10, 14, 26, 0.5)",
-    backdropFilter: "blur(6px)",
-    WebkitBackdropFilter: "blur(6px)",
-    color: "#e2e8f0",
-    fontSize: "18px",
-    lineHeight: "1",
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    transition: "all 0.2s ease",
-    fontFamily: "system-ui, sans-serif",
-    padding: "0"
-  });
-  toggleBtn.addEventListener("mouseenter", () => {
-    toggleBtn.style.background = "rgba(99, 102, 241, 0.3)";
-    toggleBtn.style.borderColor = "rgba(129, 140, 248, 0.4)";
-  });
-  toggleBtn.addEventListener("mouseleave", () => {
-    toggleBtn.style.background = "rgba(10, 14, 26, 0.5)";
-    toggleBtn.style.borderColor = "rgba(129, 140, 248, 0.2)";
-  });
-  const overlay = document.createElement("div");
-  overlay.className = "menu-overlay";
-  Object.assign(overlay.style, {
-    position: "fixed",
-    inset: "0",
-    zIndex: "90",
-    display: "none",
-    background: "rgba(10, 14, 26, 0.7)",
-    backdropFilter: "blur(8px)",
-    WebkitBackdropFilter: "blur(8px)",
-    alignItems: "center",
-    justifyContent: "center",
-    opacity: "0",
-    transition: "opacity 0.25s ease"
-  });
-  const panel = document.createElement("div");
-  panel.className = "menu-panel";
-  Object.assign(panel.style, {
-    background: "rgba(26, 35, 50, 0.92)",
-    backdropFilter: "blur(16px)",
-    WebkitBackdropFilter: "blur(16px)",
-    borderRadius: "14px",
-    border: "1px solid rgba(129, 140, 248, 0.15)",
-    padding: "24px 28px",
-    boxShadow: "0 8px 32px rgba(0,0,0,0.4)"
-  });
-  const contentArea = document.createElement("div");
-  contentArea.className = "menu-content";
-  panel.appendChild(contentArea);
-  overlay.appendChild(panel);
-  overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) close();
-  });
-  function renderMainMenu() {
-    currentView = "main";
-    contentArea.innerHTML = "";
-    const title = document.createElement("h2");
-    title.textContent = "\u83DC\u5355";
-    Object.assign(title.style, {
-      fontSize: "18px",
-      fontWeight: "600",
-      color: "#e2e8f0",
-      fontFamily: "'Crimson Text', serif",
-      textAlign: "center",
-      marginBottom: "20px",
-      letterSpacing: "2px"
-    });
-    contentArea.appendChild(title);
-    const buttons = [
-      { label: "\u{1F4D6} \u5B58\u6863", action: () => renderSaveView("save") },
-      { label: "\u{1F4C2} \u8BFB\u6863", action: () => renderSaveView("load") },
-      { label: "\u{1F3E0} \u8FD4\u56DE\u6807\u9898", action: () => {
-        close();
-        if (sceneManager2 && sceneManager2.returnToTitle) sceneManager2.returnToTitle();
-      } }
-    ];
-    buttons.forEach((btn) => {
-      const el = document.createElement("button");
-      el.textContent = btn.label;
-      Object.assign(el.style, {
-        display: "block",
-        width: "100%",
-        padding: "10px 16px",
-        marginBottom: "8px",
-        border: "1px solid rgba(129, 140, 248, 0.15)",
-        borderRadius: "8px",
-        background: "rgba(15, 23, 42, 0.5)",
-        color: "#e2e8f0",
-        fontSize: "14px",
-        fontFamily: "system-ui, sans-serif",
-        cursor: "pointer",
-        textAlign: "left",
-        transition: "all 0.2s ease"
-      });
-      el.addEventListener("mouseenter", () => {
-        el.style.background = "rgba(99, 102, 241, 0.2)";
-        el.style.borderColor = "rgba(129, 140, 248, 0.3)";
-      });
-      el.addEventListener("mouseleave", () => {
-        el.style.background = "rgba(15, 23, 42, 0.5)";
-        el.style.borderColor = "rgba(129, 140, 248, 0.15)";
-      });
-      el.addEventListener("click", btn.action);
-      contentArea.appendChild(el);
-    });
-  }
-  function renderSaveView(mode) {
-    currentView = mode;
-    contentArea.innerHTML = "";
-    const header = document.createElement("div");
-    Object.assign(header.style, {
-      display: "flex",
-      alignItems: "center",
-      gap: "8px",
-      marginBottom: "16px"
-    });
-    const backBtn = document.createElement("button");
-    backBtn.textContent = "\u2190";
-    Object.assign(backBtn.style, {
-      background: "none",
-      border: "1px solid rgba(129, 140, 248, 0.2)",
-      borderRadius: "6px",
-      color: "#94a3b8",
-      fontSize: "14px",
-      padding: "4px 8px",
-      cursor: "pointer"
-    });
-    backBtn.addEventListener("click", renderMainMenu);
-    const title = document.createElement("h2");
-    title.textContent = mode === "save" ? "\u5B58\u6863" : "\u8BFB\u6863";
-    Object.assign(title.style, {
-      fontSize: "16px",
-      fontWeight: "600",
-      color: "#e2e8f0",
-      fontFamily: "'Crimson Text', serif"
-    });
-    header.appendChild(backBtn);
-    header.appendChild(title);
-    contentArea.appendChild(header);
-    const rawSlots = saveManager2 && saveManager2.getSaveList ? saveManager2.getSaveList() : [];
-    const slots = rawSlots.length > 0 ? rawSlots : [
-      { slot: "auto", label: "\u81EA\u52A8\u5B58\u6863" },
-      { slot: "1", label: "\u5B58\u6863\u4F4D 1" },
-      { slot: "2", label: "\u5B58\u6863\u4F4D 2" },
-      { slot: "3", label: "\u5B58\u6863\u4F4D 3" }
-    ];
-    slots.forEach((slot) => {
-      const slotId = slot.slot || slot.id || "auto";
-      const info = slot.exists || slot.timestamp ? slot : null;
-      const slotKey = slotId;
-      const slotEl = document.createElement("div");
-      Object.assign(slotEl.style, {
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "10px 12px",
-        marginBottom: "6px",
-        borderRadius: "8px",
-        background: info ? "rgba(15, 23, 42, 0.5)" : "rgba(15, 23, 42, 0.3)",
-        border: "1px solid rgba(129, 140, 248, 0.1)",
-        cursor: "pointer",
-        transition: "all 0.2s ease"
-      });
-      const labelSpan = document.createElement("span");
-      labelSpan.style.color = info ? "#e2e8f0" : "#64748b";
-      labelSpan.style.fontSize = "13px";
-      labelSpan.style.fontFamily = "system-ui, sans-serif";
-      if (slot.id === "auto") {
-        labelSpan.textContent = "\u{1F4BE} \u81EA\u52A8\u5B58\u6863";
-      } else {
-        labelSpan.textContent = slot.label || `\u{1F4C1} \u5B58\u6863\u4F4D ${slotKey.replace("slot", "")}`;
-      }
-      const infoSpan = document.createElement("span");
-      infoSpan.style.color = "#64748b";
-      infoSpan.style.fontSize = "11px";
-      infoSpan.style.fontFamily = "system-ui, sans-serif";
-      if (info) {
-        const date = info.timestamp ? new Date(info.timestamp).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "--";
-        const chapter = info.chapter || "--";
-        infoSpan.textContent = `${date} \xB7 ${chapter}`;
-      } else {
-        infoSpan.textContent = "\u2014 \u7A7A \u2014";
-      }
-      slotEl.appendChild(labelSpan);
-      slotEl.appendChild(infoSpan);
-      slotEl.addEventListener("mouseenter", () => {
-        slotEl.style.background = "rgba(99, 102, 241, 0.15)";
-        slotEl.style.borderColor = "rgba(129, 140, 248, 0.25)";
-      });
-      slotEl.addEventListener("mouseleave", () => {
-        slotEl.style.background = info ? "rgba(15, 23, 42, 0.5)" : "rgba(15, 23, 42, 0.3)";
-        slotEl.style.borderColor = "rgba(129, 140, 248, 0.1)";
-      });
-      slotEl.addEventListener("click", () => {
-        if (mode === "save" && saveManager2 && saveManager2.save) {
-          saveManager2.save(slotKey, { currentNodeId: "", sceneId: "", sceneName: info ? info.sceneName : "", nodePreview: info ? info.nodePreview : "" });
-          renderSaveView(mode);
-        } else if (mode === "load" && saveManager2 && saveManager2.load && info) {
-          close();
-          saveManager2.load(slotKey);
-        }
-      });
-      contentArea.appendChild(slotEl);
-    });
-  }
-  function open() {
-    isOpen = true;
-    overlay.style.display = "flex";
-    overlay.offsetHeight;
-    overlay.style.opacity = "1";
-    renderMainMenu();
-  }
-  function close() {
-    isOpen = false;
-    overlay.style.opacity = "0";
-    setTimeout(() => {
-      if (!isOpen) overlay.style.display = "none";
-    }, 250);
-  }
-  toggleBtn.addEventListener("click", () => {
-    if (isOpen) {
-      close();
-    } else {
-      open();
-    }
-  });
-  const api = {
-    element: overlay,
-    toggleBtn,
-    open,
-    close,
-    toggle() {
-      if (isOpen) close();
-      else open();
-    },
-    destroy() {
-      [overlay, toggleBtn].forEach((el) => {
-        if (el.parentNode) el.parentNode.removeChild(el);
-      });
-    }
-  };
-  if (render) {
-    render(toggleBtn, document.body);
-    render(overlay, document.body);
-  } else {
-    document.body.appendChild(toggleBtn);
-    document.body.appendChild(overlay);
-  }
-  return api;
-}
+<div id="menu-panel">
+  <div id="menu-overlay"></div>
+  <div id="menu-box"><h3>菜单</h3></div>
+</div>
 
-// data/characters.js
-var CHARACTERS = {
-  narrator: {
-    id: "narrator",
-    name: "\u65C1\u767D",
-    emoji: "\u{1F319}",
-    color: "#94a3b8",
-    title: "",
-    desc: "\u4E16\u754C\u7684\u773C\u775B\uFF0C\u661F\u8FB0\u7684\u4F4E\u8BED"
-  },
-  lyra: {
-    id: "lyra",
-    name: "\u8389\u62C9",
-    emoji: "\u{1F3F9}",
-    color: "#6366f1",
-    title: "\u7A83\u661F\u8005",
-    desc: "\u4E09\u5E74\u524D\u8D70\u5230\u6751\u53E3\u53C8\u6298\u8FD4\u7684\u795E\u79D8\u5C11\u5973\u3002\u8BF4\u8BDD\u7528\u53CD\u95EE\u56DE\u907F\u95EE\u9898\uFF0C\u773C\u4E2D\u85CF\u7740\u7B2C\u4E09\u79CD\u65B9\u6848\u3002"
-  },
-  kael: {
-    id: "kael",
-    name: "\u51EF\u5C14",
-    emoji: "\u{1F9D9}",
-    color: "#f59e0b",
-    title: "\u5B88\u7891\u4EBA",
-    desc: "\u516D\u5341\u5E74\u524D\u661F\u9009\u8005\u7684\u5144\u957F\u3002\u7528\u6BD4\u55BB\u7ED5\u8FC7\u4E8B\u5B9E\uFF0C\u957F\u53E5\u4E2D\u85CF\u7740\u4E0D\u613F\u8BF4\u51FA\u53E3\u7684\u771F\u76F8\u3002"
-  },
-  marcus: {
-    id: "marcus",
-    name: "\u9A6C\u5E93\u65AF",
-    emoji: "\u{1F5E1}\uFE0F",
-    color: "#475569",
-    title: "\u94C1\u5320",
-    desc: "\u4E09\u4EE3\u94C1\u5320\u90FD\u6B7B\u5728\u8FD9\u4E2A\u6751\u91CC\uFF0C\u4ED6\u4E0D\u6253\u7B97\u5F53\u7B2C\u56DB\u4EE3\u3002\u77ED\u53E5\uFF0C\u7528'\u55EF'\u66FF\u4EE3\u56DE\u7B54\u3002"
-  },
-  stranger: {
-    id: "stranger",
-    name: "??",
-    emoji: "\u2753",
-    color: "#64748b",
-    title: "??",
-    desc: "\u672A\u77E5\u4E4B\u4EBA"
-  }
-};
-var characters_default = CHARACTERS;
+<div id="ending">
+  <h2></h2>
+  <p></p>
+  <div class="btn">返回标题</div>
+</div>
 
-// data/scenes.js
-var SCENES = {
-  scene_square: {
-    id: "scene_square",
-    name: "\u661F\u843D\u5E7F\u573A",
-    desc: "\u6751\u5E84\u4E2D\u592E\u7684\u5E7F\u573A\uFF0C\u77F3\u677F\u5730\u9762\u88AB\u7838\u51FA\u4E00\u4E2A\u5927\u5751\uFF0C\u5751\u8FB9\u7F18\u6CDB\u7740\u5FAE\u5F31\u7684\u84DD\u5149\u3002",
-    bg_color: ["#0a0e1a", "#1a2332"],
-    is_canvas: true
-  },
-  scene_tree: {
-    id: "scene_tree",
-    name: "\u53E4\u6811\u4E0B",
-    desc: "\u6751\u53E3\u4E00\u68F5\u5343\u5E74\u53E4\u6811\uFF0C\u6811\u5E72\u4E0A\u523B\u6EE1\u4E86\u770B\u4E0D\u61C2\u7684\u7B26\u6587\u3002\u98CE\u8FC7\u65F6\uFF0C\u6811\u53F6\u53D1\u51FA\u7C7B\u4F3C\u4EBA\u58F0\u7684\u545C\u54BD\u3002",
-    bg_color: ["#0f1419", "#1a2e1a"],
-    is_canvas: true
-  },
-  scene_tower: {
-    id: "scene_tower",
-    name: "\u5360\u661F\u5854",
-    desc: "\u5E9F\u5F03\u7684\u77F3\u5854\uFF0C\u9876\u5C42\u5730\u677F\u753B\u7740\u4E00\u5E45\u5DE8\u5927\u7684\u661F\u56FE\u2014\u2014\u4F46\u661F\u8FB0\u7684\u4F4D\u7F6E\u5168\u90E8\u9519\u4F4D\u4E86\u3002",
-    bg_color: ["#0c1220", "#1e1b3a"],
-    is_canvas: true
-  },
-  scene_monument: {
-    id: "scene_monument",
-    name: "\u5B88\u7891\u5904",
-    desc: "\u4E00\u5757\u4E00\u4EBA\u9AD8\u7684\u9ED1\u8272\u77F3\u7891\uFF0C\u8868\u9762\u5149\u6ED1\u5982\u955C\uFF0C\u6620\u51FA\u7684\u4E0D\u662F\u4F60\u7684\u8138\u2014\u2014\u662F\u661F\u7A7A\u3002",
-    bg_color: ["#080c18", "#111827"],
-    is_canvas: true
-  },
-  scene_forest: {
-    id: "scene_forest",
-    name: "\u5E7D\u8BED\u68EE\u6797",
-    desc: "\u6751\u5916\u7684\u5BC6\u6797\uFF0C\u6811\u6728\u751F\u957F\u6210\u87BA\u65CB\u5F62\u3002\u5730\u9762\u8986\u76D6\u7740\u4F1A\u53D1\u5149\u7684\u82D4\u85D3\u3002",
-    bg_color: ["#0a1410", "#132118"],
-    is_canvas: true
-  },
-  scene_cliff: {
-    id: "scene_cliff",
-    name: "\u661F\u843D\u5C71\u5D16",
-    desc: "\u6751\u5E84\u6700\u9AD8\u7684\u60AC\u5D16\uFF0C\u4ECE\u8FD9\u91CC\u80FD\u770B\u5230\u6574\u7247\u5931\u5E8F\u7684\u661F\u7A7A\u3002\u98CE\u5F3A\u52B2\u5F97\u51E0\u4E4E\u7AD9\u4E0D\u7A33\u3002",
-    bg_color: ["#0a0e1a", "#1a1a2e"],
-    is_canvas: true
-  },
-  scene_temple: {
-    id: "scene_temple",
-    name: "\u661F\u8BED\u5185\u6BBF",
-    desc: "\u85CF\u5728\u5730\u4E0B\u7684\u53E4\u8001\u6BBF\u5802\uFF0C\u5899\u58C1\u4E0A\u523B\u6EE1\u4E86\u661F\u8BED\u6587\u5B57\u3002\u7A7A\u6C14\u4E2D\u6709\u7535\u6D41\u822C\u7684\u5FAE\u9707\u3002",
-    bg_color: ["#050810", "#0f1420"],
-    is_canvas: true
-  },
-  scene_field: {
-    id: "scene_field",
-    name: "\u661F\u91CE",
-    desc: "\u4E00\u7247\u5F00\u9614\u7684\u539F\u91CE\uFF0C\u5934\u9876\u7684\u661F\u8FB0\u50CF\u6D3B\u7269\u4E00\u6837\u7F13\u7F13\u79FB\u52A8\u3002\u5730\u9762\u6563\u843D\u7740\u6E29\u70ED\u7684\u661F\u70EC\u788E\u7247\u3002",
-    bg_color: ["#0a0a1a", "#14142e"],
-    is_canvas: true
-  }
+<script>
+// ========== 角色数据 ==========
+const CHARS = {
+  narrator: {name:'旁白', emoji:'🌙', color:'#94a3b8'},
+  lyra:     {name:'莉拉', emoji:'🏹', color:'#6366f1'},
+  kael:     {name:'凯尔', emoji:'🧙', color:'#f59e0b'},
+  marcus:   {name:'马库斯', emoji:'🗡️', color:'#475569'}
 };
-var scenes_default = SCENES;
 
-// data/dialogues.js
-var DIALOGUES = {};
-DIALOGUES.pro_001 = {
-  id: "pro_001",
-  speaker: "narrator",
-  text: "\u4F60\u5728\u8FD9\u6761\u8DEF\u4E0A\u8D70\u4E86\u591A\u4E45\u4E86\uFF1F\n\u5929\u8272\u6697\u4E0B\u6765\u4E86\u3002\u4F46\u4F60\u8BB0\u5F97\u51FA\u53D1\u65F6\u660E\u660E\u662F\u6B63\u5348\u3002",
-  scene: "scene_forest",
-  next: "pro_002"
+// ========== 场景数据 ==========
+const SCENES = {
+  forest: {name:'幽语森林', bg:'radial-gradient(ellipse at 30% 40%,#0a1a0f 0%,#0f172a 50%,#0a0e1a 100%)'},
+  square: {name:'星落广场', bg:'radial-gradient(ellipse at 30% 40%,#0f172a 0%,#1e1b4b 50%,#0a0e1a 100%)'},
+  shrine: {name:'守碑处', bg:'radial-gradient(ellipse at 30% 40%,#111827 0%,#1e1b4b 50%,#0a0e1a 100%)'},
+  tower:  {name:'占星塔', bg:'radial-gradient(ellipse at 30% 40%,#1e1b4b 0%,#0f172a 50%,#0a0e1a 100%)'},
+  tree:   {name:'古树下', bg:'radial-gradient(ellipse at 30% 40%,#0a1a0f 0%,#0f172a 50%,#0a0e1a 100%)'},
+  field:  {name:'星野', bg:'radial-gradient(ellipse at center,#0f172a 0%,#1e1b4b 50%,#0a0e1a 100%)'}
 };
-DIALOGUES.pro_002 = {
-  id: "pro_002",
-  speaker: "narrator",
-  text: "\u524D\u65B9\u51FA\u73B0\u4E86\u4E00\u5EA7\u6751\u5E84\u3002\u6751\u53E3\u7ACB\u7740\u4E00\u5757\u9ED1\u8272\u7684\u77F3\u7891\uFF0C\u51E0\u4E2A\u6751\u6C11\u6C89\u9ED8\u5730\u56F4\u805A\u5728\u5468\u56F4\u3002\n\u6CA1\u6709\u4EBA\u8BF4\u8BDD\u3002\u6CA1\u6709\u4EBA\u79BB\u5F00\u3002",
-  scene: "scene_square",
-  next: "pro_003"
-};
-DIALOGUES.pro_003 = {
-  id: "pro_003",
-  speaker: "narrator",
-  text: "\u4F60\u62AC\u8D77\u5934\u2014\u2014\u7136\u540E\u4F60\u770B\u89C1\u4E86\u3002\n\u661F\u8FB0\u5728\u79FB\u52A8\u3002\u4E0D\u662F\u4E91\u5C42\u906E\u6321\u7684\u90A3\u79CD\u79FB\u52A8\u2014\u2014\u5B83\u4EEC\u5728\u6E38\u3002\u50CF\u6D3B\u7269\u4E00\u6837\uFF0C\u5728\u591C\u7A7A\u4E2D\u7F13\u6162\u5730\u6539\u53D8\u4F4D\u7F6E\u3002",
-  next: "pro_004"
-};
-DIALOGUES.pro_004 = {
-  id: "pro_004",
-  speaker: "narrator",
-  text: "\u4E00\u4E2A\u62AB\u7740\u65E7\u6597\u7BF7\u7684\u8001\u4EBA\u7AD9\u5728\u77F3\u7891\u65C1\u3002\u4ED6\u7684\u76EE\u5149\u8D8A\u8FC7\u6751\u6C11\uFF0C\u843D\u5728\u4F60\u8EAB\u4E0A\u3002\n\u4EFF\u4F5B\u4ED6\u4E00\u76F4\u5728\u7B49\u4F60\u3002",
-  next: "pro_005"
-};
-DIALOGUES.pro_005 = {
-  id: "pro_005",
-  speaker: "kael",
-  text: "\u4F60\u6765\u4E86\u3002",
-  scene: "scene_monument",
-  next: "pro_006"
-};
-DIALOGUES.pro_006 = {
-  id: "pro_006",
-  speaker: "kael",
-  text: "\u6211\u8BF4\u4E0D\u51FA\u300C\u6211\u5728\u7B49\u4F60\u300D\u8FD9\u79CD\u8BDD\u2014\u2014\u56E0\u4E3A\u6211\u7B49\u7684\u662F\u4EFB\u4F55\u4EBA\u3002\u4F46\u6765\u7684\u662F\u4F60\u3002",
-  next: "pro_007"
-};
-DIALOGUES.pro_007 = {
-  id: "pro_007",
-  speaker: "narrator",
-  text: "\u4ED6\u8BF4\u8FD9\u8BDD\u7684\u65F6\u5019\u6CA1\u6709\u770B\u4F60\u3002\u4ED6\u7684\u773C\u775B\u59CB\u7EC8\u76EF\u7740\u90A3\u5757\u9ED1\u8272\u7684\u77F3\u7891\u2014\u2014\u4E0D\uFF0C\u662F\u77F3\u7891\u91CC\u6620\u51FA\u7684\u661F\u7A7A\u3002",
-  next: "pro_008"
-};
-DIALOGUES.pro_008 = {
-  id: "pro_008",
-  speaker: "kael",
-  text: "\u4F60\u770B\u5230\u4E86\u3002\u661F\u661F\u5728\u52A8\u3002\u516D\u767E\u5E74\u524D\u5B83\u4EEC\u4E5F\u8FD9\u4E48\u52A8\u8FC7\u4E00\u6B21\u3002\u4E0A\u4E00\u4E2A\u770B\u89C1\u5B83\u4EEC\u52A8\u7684\u4EBA\u2026\u2026\u73B0\u5728\u8EBA\u5728\u8FD9\u91CC\u3002",
-  choices: [
-    { text: "\u300C\u5B83\u4EEC\u4E3A\u4EC0\u4E48\u4F1A\u52A8\uFF1F\u300D", next: "pro_009a", effects: { star_understanding: 1 } },
-    { text: "\u300C\u4F60\u662F\u8C01\uFF1F\u300D", next: "pro_009b" },
-    { text: "\uFF08\u6C89\u9ED8\u5730\u770B\u7740\u77F3\u7891\uFF09", next: "pro_009c", effects: { village_trust: 1 } }
-  ]
-};
-DIALOGUES.pro_009a = {
-  id: "pro_009a",
-  speaker: "kael",
-  text: "\u5B83\u4EEC\u5FD8\u4E86\u600E\u4E48\u8D70\u3002\u661F\u8FB0\u672C\u6765\u6709\u8F68\u9053\u2014\u2014\u50CF\u5927\u6CB3\u7684\u652F\u6D41\u4E00\u6837\u3002\u4F46\u73B0\u5728\u5B83\u4EEC\u4E71\u4E86\u3002\u65E7\u661F\u56FE\u5168\u5E9F\u4E86\u3002\u4F9D\u8D56\u661F\u8C61\u7684\u9B54\u6CD5\u2026\u2026\u4E5F\u5D29\u4E86\u3002",
-  effects: { star_understanding: 1 },
-  next: "pro_010"
-};
-DIALOGUES.pro_009b = {
-  id: "pro_009b",
-  speaker: "kael",
-  text: "\u51EF\u5C14\u3002\u5B88\u7891\u4EBA\u3002\u8FD9\u4E2A\u6751\u7684\u2026\u2026\u600E\u4E48\u8BF4\u5462\u3002\u5B88\u5893\u4EBA\uFF1F\u4E0D\uFF0C\u8FD8\u4E0D\u5230\u65F6\u5019\u3002\u4F46\u5FEB\u4E86\u3002",
-  next: "pro_010"
-};
-DIALOGUES.pro_009c = {
-  id: "pro_009c",
-  speaker: "narrator",
-  text: "\u4F60\u6CA1\u6709\u8BF4\u8BDD\u3002\u51EF\u5C14\u70B9\u4E86\u70B9\u5934\uFF0C\u597D\u50CF\u4F60\u7684\u6C89\u9ED8\u672C\u8EAB\u5C31\u662F\u4E00\u79CD\u56DE\u7B54\u3002\n\u98CE\u58F0\u91CC\uFF0C\u77F3\u7891\u8868\u9762\u6CDB\u8D77\u4E86\u4E00\u5C42\u5FAE\u5149\u3002",
-  next: "pro_010"
-};
-DIALOGUES.pro_010 = {
-  id: "pro_010",
-  speaker: "kael",
-  text: "\u4F60\u6709\u60F3\u77E5\u9053\u7684\u4E8B\u3002\u90A3\u5C31\u53BB\u770B\u770B\u5427\u3002\u8FD9\u4E2A\u6751\u5B50\u6709\u4E09\u4E2A\u5730\u65B9\u2014\u2014\u5B83\u4EEC\u4F1A\u8BF4\u4E09\u79CD\u4E0D\u540C\u7684\u8BDD\u3002",
-  choices: [
-    { text: "\u300C\u54EA\u4E09\u4E2A\u5730\u65B9\uFF1F\u300D", next: "pro_011a" },
-    { text: "\u300C\u4F60\u60F3\u8BA9\u6211\u77E5\u9053\u4EC0\u4E48\uFF1F\u300D", next: "pro_011b" }
-  ]
-};
-DIALOGUES.pro_011a = {
-  id: "pro_011a",
-  speaker: "kael",
-  text: "\u5E7F\u573A\u4E2D\u592E\u2014\u2014\u90A3\u8FB9\u6709\u4E2A\u5751\u3002\u516D\u5929\u524D\u7838\u51FA\u6765\u7684\u3002\u91CC\u9762\u6709\u4E9B\u2026\u2026\u4E1C\u897F\u3002\n\u6751\u53E3\u7684\u53E4\u6811\u2014\u2014\u6BD4\u8FD9\u4E2A\u6751\u5B50\u8FD8\u8001\u3002\u5B83\u77E5\u9053\u4E00\u4E9B\u4EBA\u4E0D\u613F\u610F\u8BF4\u7684\u4E8B\u3002\n\u8FD8\u6709\u90A3\u5EA7\u5854\u3002\u5360\u661F\u5854\u3002\u4E0A\u4E00\u4EFB\u5360\u661F\u5E08\u8D70\u4E86\u4E4B\u540E\uFF0C\u5C31\u6CA1\u4EBA\u4E0A\u53BB\u8FC7\u4E86\u3002",
-  next: "pro_012"
-};
-DIALOGUES.pro_011b = {
-  id: "pro_011b",
-  speaker: "kael",
-  text: "\u6211\u4E0D\u60F3\u8BA9\u4F60\u77E5\u9053\u4EC0\u4E48\u3002\u6211\u60F3\u8BA9\u4F60\u81EA\u5DF1\u53D1\u73B0\u3002\n\u5E7F\u573A\u3001\u53E4\u6811\u3001\u5854\u2014\u2014\u9009\u4E00\u4E2A\u5427\u3002",
-  next: "pro_012"
-};
-DIALOGUES.pro_012 = {
-  id: "pro_012",
-  speaker: "narrator",
-  text: "\u51EF\u5C14\u4E0D\u518D\u8BF4\u8BDD\u3002\u4ED6\u7684\u76EE\u5149\u56DE\u5230\u77F3\u7891\u4E0A\u3002\n\u4F60\u8F6C\u8EAB\u8D70\u5411\u2026\u2026",
-  choices: [
-    { text: "\u2726 \u5E7F\u573A\u4E2D\u592E\u7684\u5751\u6D1E", next: "pro_013a", effects: { star_understanding: 1 } },
-    { text: "\u6751\u53E3\u7684\u53E4\u6811", next: "pro_013b" },
-    { text: "\u5E9F\u5F03\u7684\u5360\u661F\u5854", next: "pro_013c" }
-  ]
-};
-DIALOGUES.pro_013a = {
-  id: "pro_013a",
-  speaker: "narrator",
-  text: "\u5E7F\u573A\u4E2D\u592E\u7684\u77F3\u677F\u5730\u9762\u88AB\u7838\u51FA\u4E86\u4E00\u4E2A\u4E09\u7C73\u5BBD\u7684\u5751\u3002\u8FB9\u7F18\u7684\u77F3\u5934\u6CDB\u7740\u6697\u84DD\u8272\u7684\u5149\u3002\n\u5751\u5E95\u6563\u843D\u7740\u51E0\u5757\u53D1\u5149\u7684\u788E\u7247\u2014\u2014\u6E29\u70ED\u7684\uFF0C\u50CF\u521A\u4ECE\u706B\u91CC\u53D6\u51FA\u7684\u94C1\u3002",
-  scene: "scene_square",
-  choices: [
-    { text: "\u2726 \u89E6\u78B0\u53D1\u5149\u788E\u7247", next: "pro_014a", effects: { has_star_ember: true, affection_lyra: 1 } },
-    { text: "\u89C2\u5BDF\u5751\u8FB9\u7684\u6597\u7BF7", next: "pro_014a2", effects: { knew_previous: true, village_trust: 1 } }
-  ]
-};
-DIALOGUES.pro_014a = {
-  id: "pro_014a",
-  speaker: "narrator",
-  text: "\u4F60\u7684\u6307\u5C16\u521A\u78B0\u5230\u788E\u7247\u2014\u2014\n\u4E16\u754C\u6D88\u5931\u4E86\u3002\n\u4F60\u7AD9\u5728\u53E6\u4E00\u4E2A\u591C\u7A7A\u4E0B\u3002\u4E00\u4E2A\u5973\u4EBA\u5728\u4F60\u9762\u524D\u5C16\u53EB\u2014\u2014\u5979\u7684\u773C\u775B\u5728\u53D1\u5149\u2014\u2014\u661F\u8FB0\u4ECE\u5979\u53E3\u4E2D\u6D8C\u51FA\u2014\u2014\n\u753B\u9762\u788E\u88C2\u3002",
-  effects: { has_star_ember: true, star_understanding: 2 },
-  next: "pro_015"
-};
-DIALOGUES.pro_014a2 = {
-  id: "pro_014a2",
-  speaker: "narrator",
-  text: "\u6597\u7BF7\u7834\u65E7\u4F46\u7528\u6599\u8003\u7A76\u2014\u2014\u4E0D\u662F\u6751\u6C11\u4F1A\u7A7F\u7684\u4E1C\u897F\u3002\u9886\u53E3\u5185\u4FA7\u7EE3\u7740\u4E00\u4E2A\u540D\u5B57\u3002\n\u4F60\u4E0D\u8BA4\u8BC6\u8FD9\u4E2A\u540D\u5B57\u3002\u4F46\u4F60\u83AB\u540D\u89C9\u5F97\u2014\u2014\u4E0A\u4E00\u4E2A\u7AD9\u5728\u8FD9\u4E2A\u5751\u8FB9\u7684\u4EBA\uFF0C\u6CA1\u80FD\u79BB\u5F00\u3002",
-  effects: { knew_previous: true },
-  next: "pro_015"
-};
-DIALOGUES.pro_013b = {
-  id: "pro_013b",
-  speaker: "narrator",
-  text: "\u53E4\u6811\u6BD4\u4F60\u5728\u8FDC\u5904\u770B\u5230\u7684\u66F4\u5927\u3002\u4E3B\u5E72\u9700\u8981\u4E94\u516D\u4E2A\u4EBA\u624D\u80FD\u5408\u62B1\u3002\u6811\u76AE\u4E0A\u523B\u6EE1\u4E86\u5BC6\u5BC6\u9EBB\u9EBB\u7684\u7B26\u6587\u2014\u2014\u6709\u4E9B\u662F\u65B0\u7684\uFF0C\u6709\u4E9B\u5DF2\u7ECF\u6A21\u7CCA\u5F97\u50CF\u4F24\u75A4\u3002",
-  scene: "scene_tree",
-  choices: [
-    { text: "\u89E6\u6478\u6811\u5E72\u4E0A\u7684\u7B26\u6587", next: "pro_014b", effects: { star_understanding: 1 } },
-    { text: "\u95ED\u4E0A\u773C\u775B\u542C\u98CE\u58F0", next: "pro_014b2" }
-  ]
-};
-DIALOGUES.pro_014b = {
-  id: "pro_014b",
-  speaker: "narrator",
-  text: "\u4F60\u7684\u624B\u638C\u8D34\u4E0A\u6811\u76AE\u7684\u77AC\u95F4\uFF0C\u4E00\u9635\u4F4E\u6C89\u7684\u55E1\u9E23\u7A7F\u8FC7\u4F60\u7684\u9AA8\u5934\u3002\n\u4E0D\u662F\u58F0\u97F3\u2014\u2014\u662F\u9707\u52A8\u3002\u4E00\u79CD\u4ECE\u5730\u5E95\u6DF1\u5904\u6D8C\u4E0A\u6765\u7684\u3001\u7F13\u6162\u7684\u8109\u52A8\u3002\n\u7136\u540E\u4F60\u7406\u89E3\u4E86\uFF1A\u8FD9\u68F5\u6811\u5728\u6015\u3002\u5B83\u5728\u8BD5\u56FE\u628A\u81EA\u5DF1\u4ECE\u571F\u91CC\u62D4\u51FA\u6765\u3002",
-  effects: { star_understanding: 1 },
-  next: "pro_015"
-};
-DIALOGUES.pro_014b2 = {
-  id: "pro_014b2",
-  speaker: "narrator",
-  text: "\u98CE\u7A7F\u8FC7\u679D\u53F6\uFF0C\u53D1\u51FA\u7C7B\u4F3C\u4EBA\u58F0\u7684\u4F4E\u8BED\u3002\n\u4F60\u5F97\u52AA\u529B\u624D\u80FD\u542C\u6E05\u2014\u2014\u6216\u8005\u8BF4\uFF0C\u4F60\u5F97\u52AA\u529B\u624D\u80FD\u627F\u8BA4\u4F60\u542C\u6E05\u4E86\uFF1A\n\u300C\u2026\u2026\u79BB\u5F00\u2026\u2026\u5728\u6700\u540E\u4E00\u9897\u661F\u7184\u706D\u4E4B\u524D\u2026\u2026\u300D",
-  next: "pro_015"
-};
-DIALOGUES.pro_013c = {
-  id: "pro_013c",
-  speaker: "narrator",
-  text: "\u5854\u5185\u7684\u87BA\u65CB\u697C\u68AF\u79EF\u6EE1\u4E86\u7070\u5C18\u3002\u5899\u58C1\u4E0A\u6BCF\u9694\u51E0\u6B65\u5C31\u6709\u4E00\u4E2A\u51F9\u69FD\u2014\u2014\u66FE\u7ECF\u653E\u8721\u70DB\u7684\u5730\u65B9\u3002\n\u4F60\u722C\u5230\u9876\u5C42\u3002\u4E00\u6247\u534A\u63A9\u7684\u6728\u95E8\u5916\uFF0C\u900F\u51FA\u5FAE\u5F31\u7684\u5149\u3002",
-  scene: "scene_tower",
-  choices: [
-    { text: "\u63A8\u95E8\u8FDB\u53BB", next: "pro_014c" },
-    { text: "\u5148\u542C\u95E8\u5185\u7684\u52A8\u9759", next: "pro_014c2" }
-  ]
-};
-DIALOGUES.pro_014c = {
-  id: "pro_014c",
-  speaker: "narrator",
-  text: "\u95E8\u5F00\u4E86\u3002\u4E00\u5E45\u5DE8\u5927\u7684\u661F\u56FE\u8986\u76D6\u4E86\u6574\u4E2A\u5706\u5F62\u5730\u677F\u3002\n\u661F\u5EA7\u7684\u7EBF\u6761\u8FD8\u5728\uFF0C\u4F46\u6BCF\u4E00\u9897\u661F\u8FB0\u7684\u4F4D\u7F6E\u90FD\u88AB\u91CD\u65B0\u6807\u6CE8\u8FC7\u2014\u2014\u7528\u98A4\u6296\u7684\u624B\u3002\n\u4F60\u8E72\u4E0B\u6765\u4ED4\u7EC6\u770B\u3002\u6240\u6709\u7684\u661F\u8FB0\u2014\u2014\u4E0D\u8BBA\u539F\u672C\u5C5E\u4E8E\u54EA\u4E2A\u661F\u5EA7\u2014\u2014\u90FD\u5728\u5411\u540C\u4E00\u4E2A\u70B9\u79FB\u52A8\u3002",
-  effects: { star_understanding: 1 },
-  next: "pro_015"
-};
-DIALOGUES.pro_014c2 = {
-  id: "pro_014c2",
-  speaker: "narrator",
-  text: "\u6CA1\u6709\u4EBA\u3002\u4F60\u63A8\u5F00\u95E8\u3002\n\u623F\u95F4\u91CC\u53EA\u6709\u4E00\u5F20\u6B6A\u5012\u7684\u4E66\u684C\u548C\u4E00\u5730\u6563\u843D\u7684\u7EB8\u5F20\u3002\u4F60\u6361\u8D77\u6700\u4E0A\u9762\u7684\u4E00\u5F20\u2014\u2014\n\u300C\u5012\u6570\u7B2C\u5341\u4E03\u65E5\u3002\u6211\u80FD\u542C\u89C1\u5B83\u4EEC\u4E86\u3002\u5B83\u4EEC\u5728\u53EB\u4E00\u4E2A\u4EBA\u7684\u540D\u5B57\u3002\u300D",
-  effects: { star_understanding: 1, knew_previous: true },
-  next: "pro_015"
-};
-DIALOGUES.pro_015 = {
-  id: "pro_015",
-  speaker: "narrator",
-  text: "\u4F60\u56DE\u5230\u5E7F\u573A\u65F6\uFF0C\u6751\u6C11\u5DF2\u7ECF\u6563\u53BB\u4E86\u3002\u77F3\u7891\u65C1\u7A7A\u65E0\u4E00\u4EBA\u2014\u2014\u51EF\u5C14\u4E0D\u89C1\u4E86\u3002\n\u4F46\u53E6\u4E00\u4E2A\u4EBA\u5728\u3002",
-  scene: "scene_square",
-  next: "pro_016"
-};
-DIALOGUES.pro_016 = {
-  id: "pro_016",
-  speaker: "lyra",
-  text: "\u4E09\u9009\u4E00\u3002\u4F60\u53EA\u53BB\u4E86\u4E00\u4E2A\u3002",
-  next: "pro_017"
-};
-DIALOGUES.pro_017 = {
-  id: "pro_017",
-  speaker: "lyra",
-  text: "\u6709\u610F\u601D\u2014\u2014\u5927\u591A\u6570\u4EBA\u90FD\u4F1A\u62FC\u547D\u60F3\u770B\u5B8C\u6240\u6709\u4E09\u4E2A\u5730\u65B9\u3002\u597D\u50CF\u77E5\u9053\u4E86\u5168\u90E8\uFF0C\u5C31\u80FD\u638C\u63A7\u4EC0\u4E48\u4F3C\u7684\u3002",
-  choices: [
-    { text: "\u300C\u4F60\u662F\u8C01\uFF1F\u300D", next: "pro_018a" },
-    { text: "\u300C\u4F60\u8DDF\u8E2A\u6211\uFF1F\u300D", next: "pro_018b", effects: { affection_lyra: -1 } },
-    { text: "\uFF08\u6C89\u9ED8\u5730\u770B\u5979\uFF09", next: "pro_018c", effects: { affection_lyra: 2 } }
-  ]
-};
-DIALOGUES.pro_018a = {
-  id: "pro_018a",
-  speaker: "lyra",
-  text: "\u8389\u62C9\u3002\u7A83\u661F\u8005\u3002\u4F60\u53EF\u4EE5\u7528\u8FD9\u4E2A\u79F0\u547C\u2014\u2014\u53CD\u6B63\u51EF\u5C14\u4ED6\u4EEC\u4E5F\u662F\u8FD9\u4E48\u53EB\u6211\u7684\u3002",
-  next: "pro_019"
-};
-DIALOGUES.pro_018b = {
-  id: "pro_018b",
-  speaker: "lyra",
-  text: "\u8DDF\u8E2A\uFF1F\u8FD9\u4E2A\u6751\u5B50\u53EA\u6709\u5DF4\u638C\u5927\u3002\u4F60\u7AD9\u5728\u90A3\u91CC\u50CF\u4E00\u68F5\u8FF7\u8DEF\u7684\u6811\u2014\u2014\u4E0D\u9700\u8981\u8DDF\u8E2A\u3002",
-  next: "pro_019"
-};
-DIALOGUES.pro_018c = {
-  id: "pro_018c",
-  speaker: "lyra",
-  text: "\uFF08\u5979\u5FAE\u5FAE\u4E00\u6014\u3002\u7136\u540E\u7B11\u4E86\u2014\u2014\u4E00\u79CD\u5F88\u6DE1\u7684\u3001\u51E0\u4E4E\u770B\u4E0D\u51FA\u6765\u7684\u7B11\u3002\uFF09",
-  next: "pro_019"
-};
-DIALOGUES.pro_019 = {
-  id: "pro_019",
-  speaker: "lyra",
-  text: "\u51EF\u5C14\u8DDF\u4F60\u8BF4\u4E86\u591A\u5C11\uFF1F\u5173\u4E8E\u8FD9\u4E2A\u6751\u5B50\u7684\u4E8B\u3002",
-  choices: [
-    { text: "\u300C\u8BF4\u4E86\u661F\u843D\u7684\u4E8B\u2014\u2014\u516D\u767E\u5E74\u4E00\u6B21\u300D", next: "pro_020a", effects: { village_trust: 1 } },
-    { text: "\u300C\u4ED6\u4EC0\u4E48\u4E5F\u6CA1\u8BF4\u6E05\u300D", next: "pro_020b", effects: { affection_lyra: 1 } },
-    { text: "\u300C\u4F60\u4E3A\u4EC0\u4E48\u4E0D\u81EA\u5DF1\u544A\u8BC9\u6211\uFF1F\u300D", next: "pro_020c", effects: { affection_lyra: 2 } }
-  ]
-};
-DIALOGUES.pro_020a = {
-  id: "pro_020a",
-  speaker: "lyra",
-  text: "\u54C8\u3002\u4ED6\u628A\u6700\u96BE\u542C\u7684\u90E8\u5206\u85CF\u8D77\u6765\u4E86\u3002\u51EF\u5C14\u5C31\u662F\u8FD9\u6837\u2014\u2014\u7528\u771F\u76F8\u7684\u4E00\u90E8\u5206\u76D6\u4F4F\u53E6\u4E00\u90E8\u5206\u3002\u4ED6\u8BF4\u4E86\u661F\u9009\u5417\uFF1F\u8BF4\u4E86\u4E0A\u4E00\u4E2A\u88AB\u9009\u4E2D\u7684\u4EBA\u600E\u4E48\u6837\u4E86\u5417\uFF1F",
-  next: "pro_021"
-};
-DIALOGUES.pro_020b = {
-  id: "pro_020b",
-  speaker: "lyra",
-  text: "\u5F53\u7136\u8BF4\u4E0D\u6E05\u3002\u8BF4\u5F97\u592A\u6E05\u695A\uFF0C\u4EBA\u5C31\u8DD1\u4E86\u3002\u8FD9\u4E2A\u6751\u5B50\u7559\u4E0D\u4F4F\u4EBA\u7684\u65B9\u5F0F\u4E0D\u662F\u7528\u5899\u2014\u2014\u662F\u7528\u79D8\u5BC6\u3002",
-  next: "pro_021"
-};
-DIALOGUES.pro_020c = {
-  id: "pro_020c",
-  speaker: "lyra",
-  text: "\uFF08\u5979\u628A\u5934\u5FAE\u5FAE\u504F\u4E86\u4E00\u4E0B\uFF0C\u50CF\u662F\u5728\u91CD\u65B0\u6253\u91CF\u4F60\u3002\uFF09\n\u76F4\u63A5\u3002\u884C\u3002\u90A3\u6211\u544A\u8BC9\u4F60\u2014\u2014\u8FD9\u4E2A\u6751\u5B50\u5728\u5403\u4EBA\u3002",
-  next: "pro_021"
-};
-DIALOGUES.pro_021 = {
-  id: "pro_021",
-  speaker: "lyra",
-  text: "\u6BCF\u516D\u767E\u5E74\uFF0C\u661F\u8FB0\u5931\u5E8F\u3002\u4E0A\u4E00\u6B21\uFF0C\u4ED6\u4EEC\u9009\u4E86\u300C\u661F\u9009\u8005\u300D\u6765\u4FEE\u590D\u5929\u7A7A\u3002\n\u90A3\u4E2A\u4EBA\u75AF\u4E86\u3002\u7136\u540E\u6B7B\u4E86\u3002\u7136\u540E\u88AB\u57CB\u5728\u90A3\u5757\u77F3\u7891\u4E0B\u9762\u3002",
-  choices: [
-    { text: "\u300C\u4F60\u5C31\u662F\u56E0\u4E3A\u8FD9\u4E2A\u60F3\u79BB\u5F00\uFF1F\u300D", next: "pro_022a", effects: { affection_lyra: 1 } },
-    { text: "\u300C\u51EF\u5C14\u8BF4\u4F60\u662F\u7A83\u661F\u8005\u2014\u2014\u4EC0\u4E48\u610F\u601D\uFF1F\u300D", next: "pro_022b" },
-    { text: "\u300C\u6211\u9700\u8981\u505A\u4EC0\u4E48\uFF1F\u300D", next: "pro_022c", effects: { village_trust: -1 } }
-  ]
-};
-DIALOGUES.pro_022a = {
-  id: "pro_022a",
-  speaker: "lyra",
-  text: "\u6211\u4E09\u5E74\u524D\u5C31\u60F3\u8D70\u3002\u8D70\u5230\u6751\u53E3\uFF0C\u6298\u8FD4\u4E86\u3002\n\u4E0D\u77E5\u9053\u56E0\u4E3A\u4EC0\u4E48\u3002\u4E5F\u8BB8\u56E0\u4E3A\u6211\u4E5F\u60F3\u77E5\u9053\u7B54\u6848\u3002",
-  next: "pro_023"
-};
-DIALOGUES.pro_022b = {
-  id: "pro_022b",
-  speaker: "lyra",
-  text: "\u7A83\u661F\u8005\u2014\u2014\u56E0\u4E3A\u6211\u5077\u661F\u661F\u7684\u529B\u91CF\u3002\n\u51EF\u5C14\u7684\u5B88\u661F\u6D3E\u60F3\u4FEE\u590D\u9635\u5217\uFF0C\u7EF4\u6301\u65E7\u79E9\u5E8F\u3002\u9A6C\u5E93\u65AF\u7684\u5F03\u661F\u6D3E\u60F3\u6BC1\u6389\u4E00\u5207\u8BA9\u5927\u5BB6\u79BB\u5F00\u3002\n\u6211\uFF1F\u6211\u60F3\u7B2C\u4E09\u79CD\u529E\u6CD5\u3002",
-  next: "pro_023"
-};
-DIALOGUES.pro_022c = {
-  id: "pro_022c",
-  speaker: "lyra",
-  text: "\uFF08\u5979\u76EF\u7740\u4F60\u770B\u4E86\u4E24\u79D2\u3002\u76EE\u5149\u91CC\u6709\u4E00\u79CD\u4F60\u8BFB\u4E0D\u61C2\u7684\u4E1C\u897F\u3002\uFF09\n\u4F60\u786E\u5B9A\u4F60\u60F3\uFF1F\u4E0A\u4E00\u4E2A\u300C\u4E3B\u52A8\u60F3\u505A\u300D\u7684\u4EBA\uFF0C\u5DF2\u7ECF\u75AF\u4E86\u3002",
-  next: "pro_023"
-};
-DIALOGUES.pro_023 = {
-  id: "pro_023",
-  speaker: "lyra",
-  text: "\u542C\u597D\u3002\u5929\u4EAE\u4E4B\u524D\u6211\u8FD8\u5728\u8FD9\u4E2A\u6751\u5B50\u91CC\u3002\u4E4B\u540E\u2014\u2014\u4E0D\u4E00\u5B9A\u3002\n\u4F60\u5982\u679C\u60F3\u542C\u771F\u6B63\u7684\u7B54\u6848\u2026\u2026\u6765\u5360\u661F\u5854\u3002\u660E\u665A\uFF0C\u7B49\u6240\u6709\u4EBA\u90FD\u7761\u4E86\u3002",
-  choices: [
-    { text: "\u300C\u6211\u4F1A\u53BB\u7684\u300D", next: "pro_024a", effects: { affection_lyra: 2 } },
-    { text: "\u300C\u6211\u4E3A\u4EC0\u4E48\u8981\u4FE1\u4F60\uFF1F\u300D", next: "pro_024b", effects: { village_trust: -1 } },
-    { text: "\u300C\u4F60\u6015\u4EC0\u4E48\uFF1F\u300D", next: "pro_024c", effects: { affection_lyra: 1 } }
-  ]
-};
-DIALOGUES.pro_024a = {
-  id: "pro_024a",
-  speaker: "lyra",
-  text: "\uFF08\u5979\u6CA1\u6709\u7B11\u3002\u4F46\u5979\u773C\u775B\u91CC\u6709\u5149\u95EA\u4E86\u4E00\u4E0B\u3002\uFF09\n\u597D\u3002\u522B\u544A\u8BC9\u51EF\u5C14\u3002",
-  next: "pro_025"
-};
-DIALOGUES.pro_024b = {
-  id: "pro_024b",
-  speaker: "lyra",
-  text: "\u4F60\u4E0D\u7528\u4FE1\u6211\u3002\u4F46\u4F60\u4E5F\u4E0D\u4FE1\u51EF\u5C14\u2014\u2014\u6211\u770B\u5F97\u51FA\u6765\u3002\u4F60\u8C01\u90FD\u4E0D\u4FE1\u3002\u8FD9\u633A\u597D\u3002\u81F3\u5C11\u4F60\u4E0D\u4F1A\u88AB\u4EBA\u5F53\u5200\u5B50\u4F7F\u3002",
-  next: "pro_025"
-};
-DIALOGUES.pro_024c = {
-  id: "pro_024c",
-  speaker: "lyra",
-  text: "\uFF08\u5979\u6C89\u9ED8\u4E86\u4E00\u4F1A\u513F\u3002\uFF09\n\u6211\u6015\u7684\u4E0D\u662F\u6211\u60F3\u8C61\u4E2D\u7684\u4E1C\u897F\u3002\u6211\u6015\u7684\u662F\u2014\u2014\u90A3\u4E9B\u6211\u660E\u660E\u77E5\u9053\u5374\u5047\u88C5\u4E0D\u77E5\u9053\u7684\u4E8B\u3002",
-  next: "pro_025"
-};
-DIALOGUES.pro_025 = {
-  id: "pro_025",
-  speaker: "narrator",
-  text: "\u8389\u62C9\u8F6C\u8EAB\u8D70\u5165\u5C4B\u820D\u4E4B\u95F4\u7684\u9634\u5F71\u4E2D\u3002\u5979\u7684\u811A\u6B65\u58F0\u5F88\u5FEB\u5C31\u542C\u4E0D\u89C1\u4E86\u2014\u2014\u5C31\u50CF\u5979\u4ECE\u6765\u6CA1\u6709\u51FA\u73B0\u8FC7\u3002",
-  next: "pro_026"
-};
-DIALOGUES.pro_026 = {
-  id: "pro_026",
-  speaker: "lyra",
-  text: "\u5BF9\u4E86\u3002\u4F60\u7684\u540D\u5B57\u4E0D\u91CD\u8981\u3002\n\u91CD\u8981\u7684\u662F\u2014\u2014\u4F60\u5DF2\u7ECF\u9009\u4E86\u3002\u4ECE\u4F60\u8E0F\u8FDB\u8FD9\u4E2A\u6751\u5B50\u7684\u90A3\u4E00\u523B\u8D77\u3002",
-  next: "pro_027"
-};
-DIALOGUES.pro_027 = {
-  id: "pro_027",
-  speaker: "narrator",
-  text: "\u591C\u98CE\u5377\u8FC7\u5E7F\u573A\u3002\u5934\u9876\u7684\u661F\u7FA4\u96C6\u4F53\u98A4\u52A8\u4E86\u4E00\u4E0B\uFF0C\u50CF\u4E00\u5927\u7FA4\u53D7\u60CA\u7684\u9E1F\u3002",
-  next: "pro_028"
-};
-DIALOGUES.pro_028 = {
-  id: "pro_028",
-  speaker: "narrator",
-  text: "\u3010\u5E8F\u5E55 \xB7 \u5B8C\u3011\n\n\u661F\u843D\u6751\u7684\u7B2C\u4E00\u591C\u7ED3\u675F\u4E86\u3002\n\u4F60\u77E5\u9053\u4E86\u4E09\u4E2A\u5730\u65B9\u3001\u4E09\u4E2A\u540D\u5B57\u3001\u4E09\u4E2A\u65B9\u5411\u3002\n\u4F46\u8FD8\u4E0D\u77E5\u9053\u2014\u2014\u4F60\u4F1A\u9009\u54EA\u4E00\u4E2A\u3002",
-  effects: { prologue_complete: true },
-  next: "ch1_001"
-};
-DIALOGUES.ch1_001 = {
-  id: "ch1_001",
-  speaker: "narrator",
-  text: "\u4F60\u5728\u6751\u5B50\u7684\u5BA2\u6808\u9192\u6765\u3002\u7A97\u5916\uFF0C\u5929\u5DF2\u7ECF\u4EAE\u4E86\u2014\u2014\u4F46\u661F\u7A7A\u4ECD\u7136\u9690\u7EA6\u53EF\u89C1\u3002\n\u767D\u5929\u548C\u9ED1\u591C\u7684\u754C\u9650\u6B63\u5728\u6A21\u7CCA\u3002",
-  scene: "scene_square",
-  next: "ch1_002"
-};
-DIALOGUES.ch1_002 = {
-  id: "ch1_002",
-  speaker: "narrator",
-  text: "\u6709\u4EBA\u5728\u4F60\u95E8\u7F1D\u4E0B\u585E\u4E86\u4E00\u5F20\u7EB8\u6761\u3002\n\u7EB8\u4E0A\u7684\u5B57\u8FF9\u5F88\u7528\u529B\uFF0C\u50CF\u662F\u523B\u4E0A\u53BB\u7684\uFF1A\n\u300C\u53E4\u6811\u4E0B\u3002\u6B63\u5348\u4E4B\u524D\u3002\u2014\u2014\u51EF\u5C14\u300D",
-  choices: [
-    { text: "\u9A6C\u4E0A\u53BB\u53E4\u6811\u89C1\u51EF\u5C14", next: "ch1_003a", effects: { affection_kael: 1 } },
-    { text: "\u5148\u5728\u6751\u5B50\u91CC\u8F6C\u4E00\u5708", next: "ch1_003b" }
-  ]
-};
-DIALOGUES.ch1_003a = {
-  id: "ch1_003a",
-  speaker: "narrator",
-  text: "\u4F60\u8D70\u51FA\u5BA2\u6808\uFF0C\u6E05\u6668\u7684\u7A7A\u6C14\u4E2D\u6709\u4E00\u80A1\u70E7\u7126\u7684\u5473\u9053\u3002\u4E0D\u662F\u706B\u707E\u2014\u2014\u662F\u522B\u7684\u4E1C\u897F\u3002\n\u4F60\u5411\u6751\u53E3\u7684\u53E4\u6811\u8D70\u53BB\u3002",
-  scene: "scene_tree",
-  next: "ch1_004"
-};
-DIALOGUES.ch1_003b = {
-  id: "ch1_003b",
-  speaker: "narrator",
-  text: "\u4F60\u5728\u6751\u5B50\u91CC\u8D70\u4E86\u4E00\u5708\u3002\u5927\u90E8\u5206\u5C4B\u5B50\u95E8\u7A97\u7D27\u95ED\u3002\u94C1\u5320\u94FA\u4F20\u6765\u7684\u9524\u58F0\u662F\u552F\u4E00\u7684\u58F0\u97F3\u3002\n\u4F60\u671D\u94C1\u5320\u94FA\u8D70\u53BB\u2014\u2014\u7136\u540E\u53C8\u6298\u8FD4\u56DE\u6765\u3002\u8FD8\u4E0D\u662F\u65F6\u5019\u3002\u5148\u53BB\u770B\u770B\u51EF\u5C14\u60F3\u8BF4\u4EC0\u4E48\u3002",
-  scene: "scene_tree",
-  effects: { affection_marcus: -1 },
-  next: "ch1_004"
-};
-DIALOGUES.ch1_004 = {
-  id: "ch1_004",
-  speaker: "kael",
-  text: "\u4F60\u6765\u4E86\u3002",
-  scene: "scene_tree",
-  next: "ch1_005"
-};
-DIALOGUES.ch1_005 = {
-  id: "ch1_005",
-  speaker: "kael",
-  text: "\u6628\u665A\u89C1\u8FC7\u8389\u62C9\u4E86\u3002",
-  next: "ch1_006"
-};
-DIALOGUES.ch1_006 = {
-  id: "ch1_006",
-  speaker: "kael",
-  text: "\u4F60\u4E0D\u7528\u56DE\u7B54\u3002\u8FD9\u4E2A\u6751\u5B50\u6CA1\u6709\u79D8\u5BC6\u2014\u2014\u81F3\u5C11\u5BF9\u6211\u6765\u8BF4\u3002",
-  choices: [
-    { text: "\u300C\u5979\u8BF4\u8FD9\u4E2A\u6751\u5728\u5403\u4EBA\u300D", next: "ch1_007a", effects: { village_trust: 1 } },
-    { text: "\u300C\u5979\u8BA9\u6211\u522B\u544A\u8BC9\u4F60\u300D", next: "ch1_007b", effects: { affection_kael: 1 } },
-    { text: "\uFF08\u6C89\u9ED8\uFF09", next: "ch1_007c" }
-  ]
-};
-DIALOGUES.ch1_007a = {
-  id: "ch1_007a",
-  speaker: "kael",
-  text: "\uFF08\u4ED6\u95ED\u4E86\u4E00\u4F1A\u513F\u773C\u775B\u3002\uFF09\n\u5979\u8BF4\u7684\u4E0D\u5B8C\u5168\u662F\u9519\u7684\u3002\u4F46\u8FD9\u4E2A\u6751\u5B50\u4E0D\u662F\u5403\u4EBA\u2014\u2014\u5B83\u662F\u2026\u2026\u5438\u6536\u3002\u7559\u4E0B\u6765\u7684\u4EBA\uFF0C\u4F1A\u6162\u6162\u53D8\u6210\u5B83\u7684\u4E00\u90E8\u5206\u3002",
-  next: "ch1_008"
-};
-DIALOGUES.ch1_007b = {
-  id: "ch1_007b",
-  speaker: "kael",
-  text: "\u554A\u3002\u5979\u786E\u5B9E\u4F1A\u8BF4\u8FD9\u79CD\u8BDD\u3002\u90A3\u5B69\u5B50\u4E0D\u559C\u6B22\u88AB\u4EBA\u770B\u900F\u3002",
-  next: "ch1_008"
-};
-DIALOGUES.ch1_007c = {
-  id: "ch1_007c",
-  speaker: "kael",
-  text: "\u4F60\u7684\u6C89\u9ED8\u2026\u2026\u6709\u65F6\u5019\u6BD4\u4F60\u8BF4\u8BDD\u66F4\u80FD\u8BF4\u660E\u95EE\u9898\u3002",
-  next: "ch1_008"
-};
-DIALOGUES.ch1_008 = {
-  id: "ch1_008",
-  speaker: "kael",
-  text: "\u6211\u627E\u4F60\u6765\uFF0C\u4E0D\u662F\u4E3A\u4E86\u804A\u8389\u62C9\u7684\u3002\u6211\u9700\u8981\u4F60\u5E2E\u6211\u505A\u4E00\u4EF6\u4E8B\u3002",
-  next: "ch1_009"
-};
-DIALOGUES.ch1_009 = {
-  id: "ch1_009",
-  speaker: "kael",
-  text: "\u661F\u8FB0\u9635\u5217\u2014\u2014\u4F60\u77E5\u9053\u5B83\u662F\u4EC0\u4E48\u5417\uFF1F",
-  choices: [
-    { text: "\u300C\u4F60\u6628\u665A\u8BF4\u7684\u4FEE\u590D\u5929\u7A7A\u7684\u529E\u6CD5\u300D", next: "ch1_010a", effects: { star_understanding: 1 } },
-    { text: "\u300C\u6211\u4EC0\u4E48\u4E5F\u4E0D\u77E5\u9053\u300D", next: "ch1_010b" }
-  ]
-};
-DIALOGUES.ch1_010a = {
-  id: "ch1_010a",
-  speaker: "kael",
-  text: "\u5BF9\u3002\u9635\u5217\u662F\u516D\u767E\u5E74\u524D\u7ACB\u4E0B\u7684\u2014\u2014\u7528\u661F\u8FB0\u672C\u8EAB\u7684\u80FD\u91CF\uFF0C\u7EC7\u6210\u4E00\u5F20\u7F51\uFF0C\u628A\u5929\u7A7A\u56FA\u5B9A\u5728\u6B63\u786E\u7684\u4F4D\u7F6E\u3002\n\u4F46\u73B0\u5728\u7F51\u7834\u4E86\u3002\u6211\u9700\u8981\u4F60\u5E2E\u6211\u4FEE\u8865\u5B83\u3002",
-  next: "ch1_011"
-};
-DIALOGUES.ch1_010b = {
-  id: "ch1_010b",
-  speaker: "kael",
-  text: "\u9635\u5217\u3002\u5D4C\u5728\u6751\u5916\u5730\u8109\u4E2D\u7684\u661F\u8FB0\u80FD\u91CF\u7F51\u3002\u516D\u767E\u5E74\u524D\uFF0C\u661F\u9009\u8005\u7528\u751F\u547D\u628A\u5B83\u7ACB\u8D77\u6765\u7684\u3002\n\u73B0\u5728\u5B83\u5728\u5D29\u6E83\u3002\u6211\u9700\u8981\u4F60\u5E2E\u6211\u4FEE\u3002",
-  next: "ch1_011"
-};
-DIALOGUES.ch1_011 = {
-  id: "ch1_011",
-  speaker: "kael",
-  text: "\u4F46\u4F60\u5F97\u77E5\u9053\u2014\u2014\u4FEE\u590D\u9635\u5217\u9700\u8981\u300C\u951A\u300D\u3002\u4E00\u4E2A\u6D3B\u7740\u7684\u4EBA\uFF0C\u7AD9\u5728\u9635\u773C\u4E0A\uFF0C\u7528\u81EA\u5DF1\u7684\u751F\u547D\u80FD\u91CF\u628A\u661F\u8FB0\u62C9\u56DE\u539F\u4F4D\u3002",
-  choices: [
-    { text: "\u300C\u4F60\u662F\u60F3\u8BA9\u6211\u5F53\u8FD9\u4E2A\u951A\uFF1F\u300D", next: "ch1_012a", effects: { village_trust: -1 } },
-    { text: "\u300C\u4E0A\u4E00\u4EFB\u951A\u662F\u8C01\uFF1F\u300D", next: "ch1_012b", effects: { star_understanding: 1 } }
-  ]
-};
-DIALOGUES.ch1_012a = {
-  id: "ch1_012a",
-  speaker: "kael",
-  text: "\uFF08\u4ED6\u7684\u76EE\u5149\u907F\u5F00\u4E86\u4F60\u3002\uFF09\n\u6211\u60F3\u2026\u2026\u4F46\u4E0D\u662F\u6211\u51B3\u5B9A\u3002\u662F\u661F\u8FB0\u9009\u7684\u3002\u6211\u53EA\u662F\u2026\u2026\u77E5\u9053\u5B83\u4F1A\u9009\u8C01\u3002",
-  next: "ch1_013"
-};
-DIALOGUES.ch1_012b = {
-  id: "ch1_012b",
-  speaker: "kael",
-  text: "\uFF08\u6C89\u9ED8\u4E86\u5F88\u4E45\u3002\uFF09\n\u6211\u5F1F\u5F1F\u3002",
-  next: "ch1_013"
-};
-DIALOGUES.ch1_013 = {
-  id: "ch1_013",
-  speaker: "kael",
-  text: "\u4ED6\u53EB\u4E9A\u745F\u3002\u516D\u5341\u5E74\u524D\u4ED6\u88AB\u9009\u4E3A\u661F\u9009\u8005\u3002\u4ED6\u4FEE\u590D\u4E86\u9635\u5217\u2014\u2014\u4EE3\u4EF7\u662F\u6C38\u8FDC\u7559\u5728\u4E86\u9635\u773C\u91CC\u3002\n\u4F60\u4EE5\u4E3A\u6211\u4E3A\u4EC0\u4E48\u5728\u8FD9\u91CC\uFF1F\u6211\u4E0D\u662F\u300C\u5B88\u7891\u4EBA\u300D\u3002\u6211\u662F\u5B88\u5893\u4EBA\u3002",
-  effects: { knew_previous: true },
-  next: "ch1_014"
-};
-DIALOGUES.ch1_014 = {
-  id: "ch1_014",
-  speaker: "kael",
-  text: "\u6211\u9700\u8981\u65F6\u95F4\u53BB\u60F3\u3002\u4F46\u5982\u679C\u4F60\u613F\u610F\u5E2E\u6211\u2014\u2014\u5929\u9ED1\u524D\u5230\u9635\u5217\u5165\u53E3\u6765\u627E\u6211\u3002",
-  choices: [
-    { text: "\u300C\u6211\u4F1A\u8003\u8651\u7684\u300D", next: "ch1_015a", effects: { affection_kael: 1 } },
-    { text: "\u300C\u6211\u4E0D\u786E\u5B9A\u6211\u4FE1\u4F60\u300D", next: "ch1_015b", effects: { village_trust: -1 } },
-    { text: "\u300C\u6211\u8981\u5148\u542C\u542C\u522B\u4EBA\u600E\u4E48\u8BF4\u300D", next: "ch1_015c", effects: { star_understanding: 1 } }
-  ]
-};
-DIALOGUES.ch1_015a = {
-  id: "ch1_015a",
-  speaker: "kael",
-  text: "\u8003\u8651\u5C31\u597D\u3002\u4E0D\u6025\u7740\u7B54\u5E94\u3002\u4F46\u6211\u5F97\u63D0\u9192\u4F60\u2014\u2014\u65F6\u95F4\u4E0D\u591A\u4E86\u3002",
-  next: "ch1_016"
-};
-DIALOGUES.ch1_015b = {
-  id: "ch1_015b",
-  speaker: "kael",
-  text: "\u4E0D\u76F8\u4FE1\u6211\uFF0C\u662F\u667A\u8005\u7684\u9009\u62E9\u3002\u516D\u5341\u5E74\u524D\u4E9A\u745F\u4FE1\u4E86\u6211\u2014\u2014\u770B\u770B\u4ED6\u7684\u7ED3\u5C40\u3002",
-  next: "ch1_016"
-};
-DIALOGUES.ch1_015c = {
-  id: "ch1_015c",
-  speaker: "kael",
-  text: "\u9A6C\u5E93\u65AF\u5417\uFF1F\u8FD8\u662F\u8389\u62C9\uFF1F\n\u53BB\u5427\u3002\u542C\u542C\u4ED6\u4EEC\u600E\u4E48\u8BF4\u3002\u7136\u540E\u770B\u770B\u4F60\u8FD8\u80FD\u4FE1\u8C01\u3002",
-  next: "ch1_016"
-};
-DIALOGUES.ch1_016 = {
-  id: "ch1_016",
-  speaker: "narrator",
-  text: "\u94C1\u5320\u94FA\u7684\u9524\u58F0\u6CA1\u6709\u56E0\u4E3A\u4F60\u7684\u5230\u6765\u800C\u505C\u4E0B\u3002",
-  scene: "scene_square",
-  next: "ch1_017"
-};
-DIALOGUES.ch1_017 = {
-  id: "ch1_017",
-  speaker: "narrator",
-  text: "\u4E00\u4E2A\u5149\u7740\u4E0A\u8EAB\u7684\u7537\u4EBA\u6B63\u5728\u6572\u6253\u4E00\u5757\u6697\u7EA2\u8272\u7684\u94C1\u3002\u6C57\u6C34\u5728\u4ED6\u80CC\u4E0A\u753B\u51FA\u6C9F\u58D1\u3002\n\u4ED6\u6CA1\u6709\u62AC\u5934\u770B\u4F60\u3002",
-  next: "ch1_018"
-};
-DIALOGUES.ch1_018 = {
-  id: "ch1_018",
-  speaker: "marcus",
-  text: "\u51EF\u5C14\u8BA9\u4F60\u6765\u7684\uFF1F",
-  next: "ch1_019"
-};
-DIALOGUES.ch1_019 = {
-  id: "ch1_019",
-  speaker: "marcus",
-  text: "\u55EF\u3002\u731C\u5230\u4E86\u3002",
-  choices: [
-    { text: "\u300C\u4F60\u600E\u4E48\u77E5\u9053\uFF1F\u300D", next: "ch1_020a" },
-    { text: "\u300C\u6211\u81EA\u5DF1\u8981\u6765\u7684\u300D", next: "ch1_020b", effects: { affection_marcus: 1 } }
-  ]
-};
-DIALOGUES.ch1_020a = {
-  id: "ch1_020a",
-  speaker: "marcus",
-  text: "\u8FD9\u4E2A\u6751\u5B50\u4E0D\u4EA7\u94C1\u3002\u6BCF\u4E00\u5757\u94C1\u90FD\u662F\u4ECE\u5916\u9762\u8FD0\u8FDB\u6765\u7684\u3002\n\u6BCF\u8FD0\u4E00\u6B21\uFF0C\u5C31\u5C11\u4E00\u4E2A\u4EBA\u613F\u610F\u8FD0\u3002\u51EF\u5C14\u9700\u8981\u4F60\u3002\u6240\u4EE5\u4ED6\u4F1A\u8BA9\u4F60\u6765\u627E\u6211\u3002",
-  next: "ch1_021"
-};
-DIALOGUES.ch1_020b = {
-  id: "ch1_020b",
-  speaker: "marcus",
-  text: "\uFF08\u4ED6\u505C\u4E86\u4E00\u4E0B\u9524\u5B50\uFF0C\u770B\u4E86\u4F60\u4E00\u773C\u3002\uFF09\n\u597D\u3002",
-  next: "ch1_021"
-};
-DIALOGUES.ch1_021 = {
-  id: "ch1_021",
-  speaker: "marcus",
-  text: "\u51EF\u5C14\u8DDF\u4F60\u8BF4\u4E86\u9635\u5217\u7684\u4E8B\u3002\u4ED6\u8BF4\u8981\u4FEE\u590D\u3002",
-  choices: [
-    { text: "\u300C\u5BF9\u3002\u4ED6\u60F3\u8BA9\u6211\u5F53\u951A\u300D", next: "ch1_022a" },
-    { text: "\u300C\u4ED6\u53EA\u8BF4\u4E86\u4E00\u534A\u300D", next: "ch1_022b", effects: { affection_marcus: 1 } }
-  ]
-};
-DIALOGUES.ch1_022a = {
-  id: "ch1_022a",
-  speaker: "marcus",
-  text: "\uFF08\u9524\u5B50\u72E0\u72E0\u7838\u5728\u94C1\u4E0A\uFF0C\u706B\u661F\u56DB\u6E85\u3002\uFF09\n\u4ED6\u5C31\u77E5\u9053\u7528\u8FD9\u62DB\u3002",
-  next: "ch1_023"
-};
-DIALOGUES.ch1_022b = {
-  id: "ch1_022b",
-  speaker: "marcus",
-  text: "\u56E0\u4E3A\u4ED6\u8BF4\u4E0D\u51FA\u53E6\u4E00\u534A\u3002\u53E6\u4E00\u534A\u592A\u96BE\u542C\u4E86\u3002",
-  next: "ch1_023"
-};
-DIALOGUES.ch1_023 = {
-  id: "ch1_023",
-  speaker: "marcus",
-  text: "\u542C\u597D\u3002\u9635\u5217\u4E0D\u9700\u8981\u4FEE\u590D\u2014\u2014\u5B83\u9700\u8981\u88AB\u6467\u6BC1\u3002",
-  next: "ch1_024"
-};
-DIALOGUES.ch1_024 = {
-  id: "ch1_024",
-  speaker: "marcus",
-  text: "\u8FD9\u4E1C\u897F\u672C\u6765\u5C31\u662F\u9519\u7684\u3002\u516D\u767E\u5E74\u524D\u90A3\u4E2A\u661F\u9009\u8005\u7528\u81EA\u5DF1\u7684\u547D\u628A\u5B83\u7ACB\u8D77\u6765\uFF0C\u6362\u6765\u4E86\u516D\u767E\u5E74\u7684\u300C\u592A\u5E73\u300D\u3002\n\u4F46\u4EE3\u4EF7\u5462\uFF1F\u8FD9\u4E2A\u6751\u5B50\u5728\u6162\u6162\u6B7B\u53BB\u3002\u5E74\u8F7B\u4EBA\u90FD\u8D70\u4E86\u3002\u5E84\u7A3C\u4E0D\u957F\u4E86\u3002\u661F\u8FB0\u8D8A\u6765\u8D8A\u6697\u3002\n\u4FEE\u590D\u5C31\u662F\u518D\u627E\u4E00\u4E2A\u4EBA\u6765\u727A\u7272\u3002",
-  choices: [
-    { text: "\u300C\u6467\u6BC1\u4E86\u4F1A\u600E\u6837\uFF1F\u300D", next: "ch1_025a", effects: { star_understanding: 1 } },
-    { text: "\u300C\u90A3\u5927\u5BB6\u5C31\u80FD\u79BB\u5F00\u4E86\uFF1F\u300D", next: "ch1_025b", effects: { affection_marcus: 1 } }
-  ]
-};
-DIALOGUES.ch1_025a = {
-  id: "ch1_025a",
-  speaker: "marcus",
-  text: "\u661F\u8FB0\u4F1A\u5F7B\u5E95\u5760\u843D\u3002\u50CF\u4E00\u4E2A\u73BB\u7483\u676F\u7838\u5728\u5730\u4E0A\u3002\u4F46\u2014\u2014\u6240\u6709\u4EBA\u90FD\u80FD\u8D70\u3002\u4E0D\u518D\u6709\u4EBA\u88AB\u300C\u9009\u300D\u4E2D\u3002\u4E0D\u518D\u6709\u4EBA\u9700\u8981\u732E\u796D\u3002",
-  next: "ch1_026"
-};
-DIALOGUES.ch1_025b = {
-  id: "ch1_025b",
-  speaker: "marcus",
-  text: "\u5BF9\u3002\u6240\u6709\u4EBA\u3002\u5305\u62EC\u6211\u3002\u6211\u7237\u7237\u662F\u94C1\u5320\u3002\u6211\u7238\u662F\u94C1\u5320\u3002\u6211\u662F\u94C1\u5320\u3002\u6211\u4E0D\u6253\u7B97\u518D\u8BA9\u6211\u7684\u513F\u5B50\u4E5F\u5F53\u94C1\u5320\u4E86\u3002",
-  next: "ch1_026"
-};
-DIALOGUES.ch1_026 = {
-  id: "ch1_026",
-  speaker: "marcus",
-  text: "\u6211\u9700\u8981\u4EBA\u5E2E\u5FD9\u3002\u9635\u5217\u7684\u6838\u5FC3\u5728\u5730\u4E0B\u2014\u2014\u661F\u8BED\u5185\u6BBF\u3002\u5165\u53E3\u88AB\u7B26\u6587\u9501\u4F4F\u4E86\u3002\n\u51EF\u5C14\u6709\u94A5\u5319\u3002\u8389\u62C9\u6709\u529E\u6CD5\u7ED5\u8FC7\u5B83\u3002\u6211\u53EA\u6709\u8FD9\u628A\u9524\u5B50\u3002",
-  choices: [
-    { text: "\u300C\u4F60\u60F3\u8981\u6211\u5E2E\u4F60\u5077\u94A5\u5319\uFF1F\u300D", next: "ch1_027a", effects: { affection_marcus: 1, village_trust: -1 } },
-    { text: "\u300C\u4F60\u60F3\u8BA9\u6211\u7AD9\u5728\u4F60\u8FD9\u8FB9\uFF1F\u300D", next: "ch1_027b" }
-  ]
-};
-DIALOGUES.ch1_027a = {
-  id: "ch1_027a",
-  speaker: "marcus",
-  text: "\uFF08\u4ED6\u7B11\u4E86\u4E00\u4E0B\u2014\u2014\u4E00\u79CD\u5F88\u82E6\u7684\u7B11\u3002\uFF09\n\u4E0D\u3002\u6211\u53EA\u60F3\u4F60\u5E2E\u6211\u60F3\u6E05\u695A\u3002\u522B\u6025\u7740\u7AD9\u961F\u3002\u5148\u770B\u6E05\u695A\u518D\u9009\u3002",
-  next: "ch1_028"
-};
-DIALOGUES.ch1_027b = {
-  id: "ch1_027b",
-  speaker: "marcus",
-  text: "\u4E0D\u662F\u7AD9\u5728\u6211\u8FD9\u8FB9\u3002\u662F\u7AD9\u5728\u4F60\u81EA\u5DF1\u90A3\u8FB9\u3002\n\u4F60\u60F3\u60F3\u2014\u2014\u4F60\u60F3\u6210\u4E3A\u4E0B\u4E00\u4E2A\u57CB\u5728\u77F3\u7891\u4E0B\u9762\u7684\u4EBA\u5417\uFF1F",
-  next: "ch1_028"
-};
-DIALOGUES.ch1_028 = {
-  id: "ch1_028",
-  speaker: "narrator",
-  text: "\u5929\u5FEB\u9ED1\u4E86\u3002\u4F60\u8D70\u5411\u5360\u661F\u5854\u3002\n\u5854\u9876\u7684\u7A97\u53E3\u4EAE\u7740\u4E00\u76CF\u706F\u3002",
-  scene: "scene_tower",
-  next: "ch1_029"
-};
-DIALOGUES.ch1_029 = {
-  id: "ch1_029",
-  speaker: "lyra",
-  text: "\u4F60\u6765\u4E86\u3002\u6BD4\u6211\u60F3\u7684\u665A\u4E00\u70B9\u2014\u2014\u4F46\u6211\u4EE5\u4E3A\u4F60\u4E0D\u4F1A\u6765\u3002",
-  next: "ch1_030"
-};
-DIALOGUES.ch1_030 = {
-  id: "ch1_030",
-  speaker: "lyra",
-  text: "\u89C1\u8FC7\u51EF\u5C14\u548C\u9A6C\u5E93\u65AF\u4E86\uFF1F",
-  choices: [
-    { text: "\u300C\u90FD\u89C1\u8FC7\u4E86\u300D", next: "ch1_031a" },
-    { text: "\u300C\u53EA\u89C1\u4E86\u51EF\u5C14\u300D", next: "ch1_031b" },
-    { text: "\u300C\u4F60\u600E\u4E48\u77E5\u9053\uFF1F\u300D", next: "ch1_031c", effects: { affection_lyra: 1 } }
-  ]
-};
-DIALOGUES.ch1_031a = {
-  id: "ch1_031a",
-  speaker: "lyra",
-  text: "\u6548\u7387\u633A\u9AD8\u3002\u90A3\u6211\u5C11\u8BF4\u70B9\u5E9F\u8BDD\u3002\n\u51EF\u5C14\u8981\u4F60\u4FEE\u590D\u9635\u5217\u3002\u9A6C\u5E93\u65AF\u8981\u4F60\u6467\u6BC1\u9635\u5217\u3002",
-  next: "ch1_032"
-};
-DIALOGUES.ch1_031b = {
-  id: "ch1_031b",
-  speaker: "lyra",
-  text: "\u90A3\u4F60\u8FD8\u6CA1\u542C\u5230\u6700\u96BE\u542C\u7684\u90E8\u5206\u3002\n\u51EF\u5C14\u8981\u4F60\u732E\u796D\u3002\u9A6C\u5E93\u65AF\u8981\u4F60\u6BC1\u706D\u3002",
-  next: "ch1_032"
-};
-DIALOGUES.ch1_031c = {
-  id: "ch1_031c",
-  speaker: "lyra",
-  text: "\u6211\u731C\u7684\u3002\u4E09\u4E2A\u9009\u62E9\u2014\u2014\u51EF\u5C14\u3001\u9A6C\u5E93\u65AF\u3001\u6211\u2014\u2014\u5927\u591A\u6570\u4EBA\u4F1A\u5148\u89C1\u524D\u4E24\u4E2A\uFF0C\u628A\u6700\u96BE\u7684\u90A3\u4E2A\u7559\u5230\u6700\u540E\u3002",
-  next: "ch1_032"
-};
-DIALOGUES.ch1_032 = {
-  id: "ch1_032",
-  speaker: "lyra",
-  text: "\u4ED6\u4EEC\u4FE9\u90FD\u53EA\u7ED9\u4F60\u4E24\u79CD\u9009\u62E9\uFF1A\u4FEE\u6216\u8005\u6BC1\u3002\u732E\u796D\u6216\u8005\u9003\u8DD1\u3002\n\u4F46\u8FD9\u4E2A\u4E16\u754C\u4E0D\u662F\u4E8C\u5143\u7684\u3002",
-  next: "ch1_033"
-};
-DIALOGUES.ch1_033 = {
-  id: "ch1_033",
-  speaker: "lyra",
-  text: "\u9635\u5217\u7684\u672C\u8D28\u2014\u2014\u662F\u661F\u8FB0\u80FD\u91CF\u7684\u8F6C\u6362\u5668\u3002\u628A\u661F\u8FB0\u4E4B\u529B\u8F6C\u5316\u4E3A\u4E00\u79CD\u2026\u2026\u56FA\u5B9A\u7684\u5F62\u6001\u3002\n\u4F46\u5B83\u4E0D\u4E00\u5B9A\u975E\u8981\u300C\u56FA\u5B9A\u300D\u5929\u7A7A\u3002\u5B83\u53EF\u4EE5\u505A\u522B\u7684\u4E8B\u3002",
-  choices: [
-    { text: "\u300C\u6BD4\u5982\uFF1F\u300D", next: "ch1_034a", effects: { star_understanding: 1 } },
-    { text: "\u300C\u4F60\u8BF4\u7684\u7B2C\u4E09\u79CD\u529E\u6CD5\u5C31\u662F\u8FD9\u4E2A\uFF1F\u300D", next: "ch1_034b", effects: { affection_lyra: 1 } }
-  ]
-};
-DIALOGUES.ch1_034a = {
-  id: "ch1_034a",
-  speaker: "lyra",
-  text: "\u6BD4\u5982\u2014\u2014\u5EFA\u7ACB\u65B0\u7684\u5951\u7EA6\u3002\u661F\u8FB0\u4E0D\u9700\u8981\u88AB\u56FA\u5B9A\u5728\u65E7\u8F68\u9053\u4E0A\u3002\u5B83\u4EEC\u53EA\u662F\u9700\u8981\u4E00\u4E2A\u65B0\u7684\u300C\u7EA6\u5B9A\u300D\u3002\n\u4E0D\u662F\u4FEE\u590D\u3002\u4E0D\u662F\u6BC1\u706D\u3002\u91CD\u65B0\u8C08\u5224\u3002",
-  next: "ch1_035"
-};
-DIALOGUES.ch1_034b = {
-  id: "ch1_034b",
-  speaker: "lyra",
-  text: "\u5BF9\u3002\u9635\u5217\u4E0D\u9700\u8981\u951A\u2014\u2014\u5B83\u9700\u8981\u4E00\u4E2A\u65B0\u7684\u534F\u8BAE\u3002\u8BA9\u661F\u8FB0\u81EA\u5DF1\u9009\u62E9\u5B83\u4EEC\u7684\u8F68\u9053\u3002\n\u8FD9\u4E0D\u662F\u63A7\u5236\u3002\u8FD9\u662F\u2026\u2026\u5BF9\u8BDD\u3002",
-  next: "ch1_035"
-};
-DIALOGUES.ch1_035 = {
-  id: "ch1_035",
-  speaker: "lyra",
-  text: "\u4F46\u8FD9\u4EF6\u4E8B\u9700\u8981\u4E09\u4E2A\u4EBA\u3002\u4E0D\u662F\u4E00\u4E2A\u4EBA\u2014\u2014\u662F\u4E09\u4E2A\u7AD9\u5728\u4E0D\u540C\u4F4D\u7F6E\u7684\u4EBA\uFF0C\u540C\u65F6\u542F\u52A8\u9635\u5217\u7684\u4E09\u4E2A\u8282\u70B9\u3002\n\u6211\u4E00\u4E2A\u4EBA\u505A\u4E0D\u5230\u3002",
-  choices: [
-    { text: "\u300C\u4F60\u60F3\u8BA9\u6211\u5E2E\u4F60\u8BF4\u670D\u53E6\u5916\u4E24\u4E2A\u4EBA\uFF1F\u300D", next: "ch1_036a", effects: { affection_lyra: 2 } },
-    { text: "\u300C\u4E3A\u4EC0\u4E48\u975E\u8981\u4E09\u4E2A\u4EBA\uFF1F\u300D", next: "ch1_036b" },
-    { text: "\u300C\u4F60\u5728\u5229\u7528\u6211\u3002\u300D", next: "ch1_036c", effects: { affection_lyra: -2, village_trust: -1 } }
-  ]
-};
-DIALOGUES.ch1_036a = {
-  id: "ch1_036a",
-  speaker: "lyra",
-  text: "\uFF08\u5979\u770B\u7740\u4F60\uFF0C\u76EE\u5149\u91CC\u6709\u67D0\u79CD\u63A5\u8FD1\u6E29\u5EA6\u7684\u4E1C\u897F\u3002\uFF09\n\u6211\u6CA1\u6CD5\u8BF4\u670D\u4ED6\u4EEC\u3002\u4ED6\u4EEC\u4E0D\u4FE1\u6211\u3002\u4F46\u4ED6\u4EEC\u53EF\u80FD\u2014\u2014\u4F1A\u4FE1\u4F60\u3002",
-  next: "ch1_037"
-};
-DIALOGUES.ch1_036b = {
-  id: "ch1_036b",
-  speaker: "lyra",
-  text: "\u9635\u5217\u7684\u4E09\u4E2A\u8282\u70B9\u5206\u522B\u5BF9\u5E94\u2014\u2014\u5929\u3001\u5730\u3001\u4EBA\u3002\u4E00\u4E2A\u4EBA\u53EA\u80FD\u5360\u4E00\u4E2A\u4F4D\u7F6E\u3002\n\u516D\u767E\u5E74\u524D\u7684\u661F\u9009\u8005\u662F\u4E00\u4E2A\u4EBA\u5F3A\u884C\u7AD9\u4E86\u4E09\u4E2A\u4F4D\u7F6E\u2014\u2014\u6240\u4EE5\u4ED6\u6B7B\u4E86\u3002",
-  next: "ch1_037"
-};
-DIALOGUES.ch1_036c = {
-  id: "ch1_036c",
-  speaker: "lyra",
-  text: "\uFF08\u5979\u6C89\u9ED8\u4E86\u5F88\u4E45\u3002\u7136\u540E\u8F7B\u8F7B\u8BF4\u4E86\u4E00\u53E5\u3002\uFF09\n\u5BF9\u3002\u6211\u5728\u5229\u7528\u4F60\u3002\u5C31\u50CF\u51EF\u5C14\u548C\u9A6C\u5E93\u65AF\u4E5F\u5728\u5229\u7528\u4F60\u4E00\u6837\u3002\n\u533A\u522B\u662F\u2014\u2014\u6211\u544A\u8BC9\u4F60\u4E86\u3002",
-  next: "ch1_037"
-};
-DIALOGUES.ch1_037 = {
-  id: "ch1_037",
-  speaker: "narrator",
-  text: "\u4F60\u79BB\u5F00\u4E86\u5360\u661F\u5854\u3002\u591C\u8272\u5DF2\u6DF1\u3002\n\u5728\u5E7F\u573A\u4E0A\uFF0C\u4F60\u770B\u5230\u4E86\u4E00\u4E2A\u4F60\u6CA1\u60F3\u5230\u7684\u573A\u666F\uFF1A\u51EF\u5C14\u3001\u9A6C\u5E93\u65AF\u548C\u8389\u62C9\u2014\u2014\u4E09\u4E2A\u4EBA\u540C\u65F6\u7AD9\u5728\u90A3\u91CC\u3002",
-  scene: "scene_square",
-  next: "ch1_038"
-};
-DIALOGUES.ch1_038 = {
-  id: "ch1_038",
-  speaker: "narrator",
-  text: "\u6CA1\u6709\u4EBA\u8BF4\u8BDD\u3002\u7A7A\u6C14\u50CF\u4E00\u6839\u7EF7\u7D27\u7684\u5F26\u3002",
-  next: "ch1_039"
-};
-DIALOGUES.ch1_039 = {
-  id: "ch1_039",
-  speaker: "kael",
-  text: "\u5979\u5728\u8DDF\u4F60\u8BF4\u7B2C\u4E09\u79CD\u65B9\u6848\u4E86\uFF0C\u5BF9\u5427\uFF1F",
-  next: "ch1_040"
-};
-DIALOGUES.ch1_040 = {
-  id: "ch1_040",
-  speaker: "marcus",
-  text: "\u90A3\u65B9\u6848\u884C\u4E0D\u901A\u3002\u4F60\u77E5\u9053\u884C\u4E0D\u901A\u3002",
-  choices: [
-    { text: "\u300C\u4E5F\u8BB8\u53EF\u4EE5\u8BD5\u8BD5\u300D", next: "ch1_041a" },
-    { text: "\u300C\u81F3\u5C11\u6BD4\u8BA9\u4EBA\u53BB\u6B7B\u597D\u300D", next: "ch1_041b", effects: { affection_lyra: 1 } },
-    { text: "\uFF08\u7B49\u4ED6\u4EEC\u5435\u5B8C\uFF09", next: "ch1_041c", effects: { village_trust: 1 } }
-  ]
-};
-DIALOGUES.ch1_041a = {
-  id: "ch1_041a",
-  speaker: "marcus",
-  text: "\u8BD5\u8BD5\uFF1F\u4F60\u77E5\u9053\u8BD5\u7684\u4EE3\u4EF7\u662F\u4EC0\u4E48\uFF1F\u5982\u679C\u5979\u9519\u4E86\u2014\u2014\u4E0D\u662F\u5979\u6B7B\u3002\u662F\u6240\u6709\u4EBA\u3002",
-  next: "ch1_042"
-};
-DIALOGUES.ch1_041b = {
-  id: "ch1_041b",
-  speaker: "kael",
-  text: "\u4F60\u4EE5\u4E3A\u6211\u5728\u8BA9\u4EBA\u53BB\u6B7B\uFF1F\u6211\u5728\u4FDD\u62A4\u4ED6\u4EEC\uFF01\u4F60\u4EE5\u4E3A\u6211\u60F3\u8BA9\u4E9A\u745F\u2026\u2026",
-  next: "ch1_042"
-};
-DIALOGUES.ch1_041c = {
-  id: "ch1_041c",
-  speaker: "lyra",
-  text: "\uFF08\u5979\u770B\u7740\u4F60\u3002\u6CA1\u8BF4\u8BDD\u3002\u4F46\u4F60\u611F\u89C9\u5230\u5979\u5E0C\u671B\u4F60\u8BF4\u70B9\u4EC0\u4E48\u3002\uFF09",
-  next: "ch1_042"
-};
-DIALOGUES.ch1_042 = {
-  id: "ch1_042",
-  speaker: "lyra",
-  text: "\u591F\u4E86\u3002\u8BA9ta\u9009\u3002",
-  next: "ch1_043"
-};
-DIALOGUES.ch1_043 = {
-  id: "ch1_043",
-  speaker: "lyra",
-  text: "\u4F60\u542C\u4E86\u6211\u4EEC\u4E09\u4E2A\u4EBA\u7684\u8BDD\u3002\u73B0\u5728\u2014\u2014\u4F60\u9009\u8C01\uFF1F",
-  next: "ch1_044"
-};
-DIALOGUES.ch1_044 = {
-  id: "ch1_044",
-  speaker: "narrator",
-  text: "\u4E09\u4E2A\u4EBA\u90FD\u770B\u7740\u4F60\u3002\n\u5934\u9876\u7684\u661F\u7FA4\u5728\u7F13\u6162\u5730\u65CB\u8F6C\u2014\u2014\u50CF\u4E00\u53EA\u5DE8\u5927\u7684\u773C\u775B\u6B63\u5728\u7741\u5F00\u3002",
-  choices: [
-    { text: "\u2726\u300C\u6211\u9009\u51EF\u5C14\u3002\u9635\u5217\u9700\u8981\u4FEE\u590D\u3002\u300D", next: "ch1_045a", effects: { sided_with: "kael", affection_kael: 3, affection_marcus: -2, affection_lyra: -1 } },
-    { text: "\u2726\u300C\u6211\u9009\u9A6C\u5E93\u65AF\u3002\u9635\u5217\u5FC5\u987B\u6467\u6BC1\u3002\u300D", next: "ch1_045b", effects: { sided_with: "marcus", affection_marcus: 3, affection_kael: -2, affection_lyra: -1 } },
-    { text: "\u2726\u300C\u6211\u9009\u8389\u62C9\u3002\u6211\u4EEC\u8BD5\u8BD5\u7B2C\u4E09\u79CD\u65B9\u6848\u3002\u300D", next: "ch1_045c", effects: { sided_with: "lyra", affection_lyra: 3, affection_kael: -2, affection_marcus: -1 } },
-    { text: "\u300C\u6211\u8C01\u90FD\u4E0D\u9009\u3002\u8FD9\u4E0D\u5173\u6211\u7684\u4E8B\u3002\u300D", next: "ch1_045d", effects: { sided_with: "none", village_trust: -2, affection_kael: -2, affection_marcus: -2, affection_lyra: -2 } }
-  ]
-};
-DIALOGUES.ch1_045a = {
-  id: "ch1_045a",
-  speaker: "kael",
-  text: "\uFF08\u4ED6\u95ED\u4E0A\u773C\u775B\uFF0C\u957F\u957F\u5730\u547C\u51FA\u4E00\u53E3\u6C14\u3002\u4EFF\u4F5B\u7B49\u4E86\u516D\u5341\u5E74\u624D\u7B49\u5230\u8FD9\u53E5\u8BDD\u3002\uFF09\n\u8C22\u8C22\u4F60\u3002\u6211\u4E0D\u4F1A\u8BA9\u4F60\u540E\u6094\u7684\u3002",
-  next: "ch1_046"
-};
-DIALOGUES.ch1_045b = {
-  id: "ch1_045b",
-  speaker: "marcus",
-  text: "\uFF08\u4ED6\u628A\u9524\u5B50\u91CD\u91CD\u6401\u5728\u5730\u4E0A\u3002\uFF09\n\u597D\u3002\u5C31\u8FD9\u4E48\u529E\u3002\u660E\u65E9\u6211\u53BB\u9635\u5217\u5165\u53E3\u7B49\u4F60\u3002",
-  next: "ch1_046"
-};
-DIALOGUES.ch1_045c = {
-  id: "ch1_045c",
-  speaker: "lyra",
-  text: "\uFF08\u5979\u7684\u5634\u89D2\u5FAE\u5FAE\u52A8\u4E86\u4E00\u4E0B\u3002\u4E0D\u662F\u7B11\uFF0C\u4F46\u63A5\u8FD1\u3002\uFF09\n\u597D\u3002\u4F60\u9700\u8981\u77E5\u9053\u7684\u4E1C\u897F\u2014\u2014\u90FD\u5728\u8FD9\u91CC\u4E86\u3002",
-  next: "ch1_046"
-};
-DIALOGUES.ch1_045d = {
-  id: "ch1_045d",
-  speaker: "narrator",
-  text: "\u4E09\u4E2A\u4EBA\u90FD\u6C89\u9ED8\u4E86\u3002\u8389\u62C9\u8F6C\u8EAB\u8D70\u4E86\u3002\u9A6C\u5E93\u65AF\u56DE\u4E86\u94C1\u5320\u94FA\u3002\u51EF\u5C14\u7AD9\u4E86\u4E00\u4F1A\u513F\uFF0C\u4E5F\u56DE\u5230\u4E86\u77F3\u7891\u65C1\u3002\n\u4F60\u4E00\u4E2A\u4EBA\u7559\u5728\u5E7F\u573A\u4E0A\u3002\u661F\u661F\u5728\u5934\u9876\u7EE7\u7EED\u79FB\u52A8\u3002",
-  next: "ch1_046"
-};
-DIALOGUES.ch1_046 = {
-  id: "ch1_046",
-  speaker: "narrator",
-  text: "\u4F46\u5C31\u5728\u4F60\u4EE5\u4E3A\u8FD9\u4E2A\u591C\u665A\u5C31\u8FD9\u6837\u7ED3\u675F\u65F6\u2014\u2014\n\u4E00\u58F0\u4F4E\u6C89\u7684\u8F70\u9E23\u4ECE\u5730\u4E0B\u6D8C\u4E0A\u6765\u3002\u811A\u4E0B\u7684\u77F3\u677F\u5728\u9707\u52A8\u3002",
-  scene: "scene_square",
-  next: "ch1_047"
-};
-DIALOGUES.ch1_047 = {
-  id: "ch1_047",
-  speaker: "narrator",
-  text: "\u5E7F\u573A\u4E2D\u592E\u7684\u9ED1\u8272\u77F3\u7891\u2014\u2014\u88C2\u5F00\u4E86\u3002\n\u4E00\u9053\u5149\u4ECE\u88C2\u7F1D\u4E2D\u5C04\u51FA\u3002\u4E0D\u662F\u9633\u5149\u2014\u2014\u662F\u661F\u8FB0\u7684\u5149\u3002\u51B7\u800C\u70C8\u3002",
-  next: "ch1_048"
-};
-DIALOGUES.ch1_048 = {
-  id: "ch1_048",
-  speaker: "kael",
-  text: "\u4E0D\u2026\u2026\u8FD8\u4E0D\u5230\u65F6\u5019\u2026\u2026",
-  next: "ch1_049"
-};
-DIALOGUES.ch1_049 = {
-  id: "ch1_049",
-  speaker: "narrator",
-  text: "\u51EF\u5C14\u51B2\u5411\u77F3\u7891\u3002\u4F46\u6709\u4EBA\u6BD4\u4ED6\u66F4\u5FEB\u3002",
-  choices: [
-    { text: "\u300C\u8DDF\u4E0A\u8389\u62C9\u300D", next: "ch1_050a", effects: { affection_lyra: 2, star_understanding: 1 } },
-    { text: "\u300C\u5148\u53BB\u6276\u51EF\u5C14\u300D", next: "ch1_050b", effects: { affection_kael: 2 } }
-  ]
-};
-DIALOGUES.ch1_049_alt = {
-  id: "ch1_049_alt",
-  speaker: "narrator",
-  text: "\u51EF\u5C14\u51B2\u5411\u77F3\u7891\u3002\u4ED6\u7684\u8EAB\u4F53\u649E\u5728\u77F3\u7891\u4E0A\u2014\u2014\u7136\u540E\u88AB\u5F39\u5F00\u3002\n\u5149\u66F4\u5F3A\u4E86\u3002",
-  condition: 'affection_lyra < 5 && sided_with !== "lyra"',
-  choices: [
-    { text: "\u300C\u53BB\u6276\u51EF\u5C14\u300D", next: "ch1_050b", effects: { affection_kael: 2 } },
-    { text: "\u300C\u51B2\u5411\u77F3\u7891\u770B\u4E2A\u7A76\u7ADF\u300D", next: "ch1_050c", effects: { star_understanding: 1, village_trust: 1 } }
-  ]
-};
-DIALOGUES.ch1_050a = {
-  id: "ch1_050a",
-  speaker: "narrator",
-  text: "\u4F60\u8DDF\u4E0A\u4E86\u8389\u62C9\u3002\u5979\u8DD1\u5411\u5360\u661F\u5854\u2014\u2014\u4E0D\u662F\u5411\u4E0A\uFF0C\u800C\u662F\u7ED5\u5230\u5854\u5E95\uFF0C\u6380\u5F00\u4E00\u5757\u5730\u7816\uFF0C\u9732\u51FA\u4E00\u4E2A\u5411\u4E0B\u7684\u5165\u53E3\u3002\n\u300C\u8FD9\u8FB9\u3002\u77F3\u7891\u7684\u6839\u5728\u5854\u4E0B\u9762\u3002\u300D",
-  effects: { truth_revealed: true },
-  next: "ch1_051"
-};
-DIALOGUES.ch1_050b = {
-  id: "ch1_050b",
-  speaker: "kael",
-  text: "\uFF08\u4F60\u6276\u4F4F\u51EF\u5C14\u3002\u4ED6\u7684\u624B\u81C2\u5728\u53D1\u6296\u2014\u2014\u4E0D\u662F\u56E0\u4E3A\u6050\u60E7\uFF0C\u662F\u56E0\u4E3A\u67D0\u79CD\u5F3A\u70C8\u7684\u2026\u2026\u5171\u9E23\uFF1F\uFF09\n\u300C\u2026\u2026\u4E9A\u745F\u3002\u4ED6\u5728\u53EB\u6211\u3002\u300D",
-  next: "ch1_051"
-};
-DIALOGUES.ch1_050c = {
-  id: "ch1_050c",
-  speaker: "narrator",
-  text: "\u4F60\u51B2\u5411\u77F3\u7891\u3002\u5149\u8D8A\u6765\u8D8A\u5F3A\u2014\u2014\u7136\u540E\u4F60\u770B\u89C1\u4E86\u2014\u2014\n\u77F3\u7891\u6DF1\u5904\uFF0C\u6709\u4E00\u4E2A\u4EBA\u5F71\u3002\u95ED\u7740\u773C\u775B\u3002\u50CF\u5728\u6C34\u5E95\u6C89\u7761\u4E86\u5F88\u4E45\u7684\u4EBA\u3002",
-  effects: { truth_revealed: true, knew_previous: true },
-  next: "ch1_051"
-};
-DIALOGUES.ch1_051 = {
-  id: "ch1_051",
-  speaker: "narrator",
-  text: "\u5149\u7F13\u7F13\u6D88\u6563\u3002\u77F3\u7891\u6062\u590D\u4E86\u539F\u72B6\u2014\u2014\u4F46\u88C2\u7F1D\u8FD8\u5728\u3002\n\u5E7F\u573A\u4E0A\u805A\u96C6\u4E86\u6751\u6C11\u3002\u4ED6\u4EEC\u6C89\u9ED8\u5730\u7AD9\u7740\uFF0C\u50CF\u6628\u591C\u4E00\u6837\u3002",
-  next: "ch1_052"
-};
-DIALOGUES.ch1_052 = {
-  id: "ch1_052",
-  speaker: "kael",
-  text: "\u9635\u5217\u6491\u4E0D\u4F4F\u4E86\u3002\u6211\u4EEC\u4EE5\u4E3A\u8FD8\u6709\u4E03\u5929\u2014\u2014\u4F46\u5B9E\u9645\u4E0A\u2026\u2026",
-  next: "ch1_053"
-};
-DIALOGUES.ch1_052b = {
-  id: "ch1_052b",
-  speaker: "marcus",
-  text: "\u6700\u591A\u4E09\u5929\u3002\u4E09\u5929\u4E4B\u540E\uFF0C\u8981\u4E48\u9635\u5217\u5D29\uFF0C\u8981\u4E48\u65B0\u951A\u88AB\u9009\u4E2D\u3002",
-  condition: "knew_previous !== true",
-  next: "ch1_053"
-};
-DIALOGUES.ch1_053 = {
-  id: "ch1_053",
-  speaker: "narrator",
-  text: "\u6751\u6C11\u4EEC\u6563\u4E86\u3002\u5E7F\u573A\u4E0A\u53EA\u5269\u4E0B\u4F60\u3001\u51EF\u5C14\u3001\u9A6C\u5E93\u65AF\u2026\u2026\u548C\u8FDC\u5904\u5854\u9876\u7684\u8389\u62C9\u3002",
-  scene: "scene_square",
-  next: "ch1_054"
-};
-DIALOGUES.ch1_054 = {
-  id: "ch1_054",
-  speaker: "narrator",
-  text: "\u4E09\u5929\u3002\n\u4F60\u8FD8\u6709\u4E09\u5929\u65F6\u95F4\u3002\u4FEE\u590D\u9635\u5217\u3002\u6467\u6BC1\u9635\u5217\u3002\u6216\u8005\u627E\u5230\u90A3\u4E2A\u6CA1\u4EBA\u8BD5\u8FC7\u7684\u7B2C\u4E09\u79CD\u529E\u6CD5\u3002",
-  next: "ch1_055"
-};
-DIALOGUES.ch1_055 = {
-  id: "ch1_055",
-  speaker: "narrator",
-  text: "\u660E\u5929\u4E00\u65E9\uFF0C\u4F60\u8981\u53BB\u9635\u5217\u5165\u53E3\u3002\u4E0D\u7BA1\u9009\u4E86\u4EC0\u4E48\u2014\u2014\u5230\u4E86\u90A3\u91CC\uFF0C\u5C31\u6CA1\u6709\u56DE\u5934\u8DEF\u4E86\u3002",
-  next: "ch1_056"
-};
-DIALOGUES.ch1_055a = {
-  id: "ch1_055a",
-  speaker: "kael",
-  text: "\u5929\u4EAE\u524D\u6765\u53E4\u6811\u627E\u6211\u3002\u6211\u5E26\u4F60\u53BB\u9635\u5217\u5165\u53E3\u3002",
-  condition: "sided_with === 'kael'",
-  next: "ch1_056"
-};
-DIALOGUES.ch1_055b = {
-  id: "ch1_055b",
-  speaker: "marcus",
-  text: "\u5929\u4EAE\u524D\u5230\u94C1\u5320\u94FA\u6765\u3002\u6211\u6709\u4E1C\u897F\u8981\u7ED9\u4F60\u3002",
-  condition: "sided_with === 'marcus'",
-  next: "ch1_056"
-};
-DIALOGUES.ch1_055c = {
-  id: "ch1_055c",
-  speaker: "lyra",
-  text: "\u5929\u4EAE\u524D\u6765\u5854\u5E95\u3002\u6211\u4EEC\u8D70\u90A3\u6761\u4E0D\u4E3A\u4EBA\u77E5\u7684\u8DEF\u3002",
-  condition: "sided_with === 'lyra'",
-  next: "ch1_056"
-};
-DIALOGUES.ch1_056 = {
-  id: "ch1_056",
-  speaker: "narrator",
-  text: "\u3010\u7B2C\u4E00\u7AE0\xB7\u5B8C\u3011\n\n\u661F\u8FB0\u5728\u5934\u9876\u7EE7\u7EED\u504F\u79BB\u8F68\u9053\u3002\n\u4E09\u5929\u7684\u5012\u8BA1\u65F6\u5DF2\u7ECF\u5F00\u59CB\u3002",
-  effects: { chapter1_complete: true }
-};
-var dialogues_default = DIALOGUES;
 
-// main.js
-var ROOT = document.getElementById("game-root") || document.body;
-function mount(el, parent) {
-  parent = parent || ROOT;
-  parent.appendChild(el);
-}
-var flags = FlagSystem();
-var sceneManager = SceneManager({ scenes: scenes_default, container: ROOT });
-var saveManager = SaveManager({ flags });
-var engine = DialogueEngine({ flags });
-var dialogueNodes = Object.values(dialogues_default);
-engine.loadDialogue(dialogueNodes);
-var dialogBox = DialogBox({ render: mount, engine, characters: characters_default });
-var choicePanel = ChoicePanel({ render: mount, engine, evaluateCondition: (cond) => flags.evaluateCondition(cond) });
-var hud = HUD({ render: mount, flagSystem: flags, affectionCharacters: [
-  { id: "kael", label: "\u51EF\u5C14" },
-  { id: "marcus", label: "\u9A6C\u5E93\u65AF" },
-  { id: "lyra", label: "\u8389\u62C9" }
-] });
-var menuUI = MenuUI({ render: mount, saveManager, sceneManager });
-function getNextNodeId(currentId) {
-  if (!currentId) return null;
-  const match = currentId.match(/^([a-zA-Z]+\d*_)?(\d+)([a-z]?)$/);
-  if (match) {
-    const prefix = match[1] || "";
-    const num = parseInt(match[2], 10);
-    const suffix = match[3] || "";
-    if (suffix) {
-      const nextSuffix = String.fromCharCode(suffix.charCodeAt(0) + 1);
-      const nextId2 = prefix + num + nextSuffix;
-      if (engine.getNode(nextId2)) return nextId2;
-    }
-    let nextNum = num + 1;
-    let nextId = prefix + nextNum;
-    if (engine.getNode(nextId)) return nextId;
-    const paddedNum = String(num).padStart(match[2].length, "0");
-    const nextPadded = String(nextNum).padStart(match[2].length, "0");
-    nextId = prefix + nextPadded;
-    if (engine.getNode(nextId)) return nextId;
-    const altId = prefix + num + "a2";
-    if (suffix === "a" && engine.getNode(altId)) return altId;
-  }
-  const suffixMatch = currentId.match(/^(.+?)([a-z])$/);
-  if (suffixMatch) {
-    const base = suffixMatch[1];
-    const lastChar = suffixMatch[2];
-    const nextChar = String.fromCharCode(lastChar.charCodeAt(0) + 1);
-    const nextId = base + nextChar;
-    if (engine.getNode(nextId)) return nextId;
-  }
+// ========== 对话数据 ==========
+const DIALOGUES = {
+  pro_001:{speaker:'narrator', text:'你在这条路上走了多久了？\n天色暗下来了。但你记得出发时明明是正午。', scene:'forest', next:'pro_002'},
+  pro_002:{speaker:'narrator', text:'前方出现了一座村庄。村口立着一块黑色的石碑，几个村民沉默地围聚在周围。\n没有人说话。没有人离开。', scene:'square', next:'pro_003'},
+  pro_003:{speaker:'narrator', text:'你抬起头——然后你看见了。\n星辰在移动。不是云层遮挡的那种移动——它们在游。像活物一样，在夜空中缓慢地改变位置。', scene:'field', next:'pro_004'},
+  pro_004:{speaker:'narrator', text:'一个披着旧斗篷的老人站在石碑旁。他的目光越过村民，落在你身上。\n仿佛他一直在等你。', scene:'shrine', next:'pro_005'},
+  pro_005:{speaker:'kael', text:'你来了。\n我等了六十年。准确地说——不是我，是这个位置等了你六十年。', scene:'shrine', next:'pro_006'},
+  pro_006:{speaker:'kael', text:'你看到那些星星了，对不对？它们在逃。因为有什么东西正在追它们。\n而你是唯一能让它们停下来的人。', scene:'field', next:'pro_007'},
+  pro_007:{speaker:'narrator', text:'他指了指村口那块黑色的石碑。上面没有文字，但你能感觉到——它在呼吸。', scene:'shrine', next:'pro_008'},
+  pro_008:{speaker:'kael', text:'触碰它。然后你就会明白一切。', scene:'shrine', choices:[
+    {text:'走上前触碰石碑', next:'pro_009a', effects:{touched_stone:true}},
+    {text:'后退一步：\"我需要知道更多\"', next:'pro_009b', effects:{asked_more:true}},
+    {text:'看着凯尔：\"你碰过吗？\"', next:'pro_009c', effects:{asked_kael:true, affection_kael:3}}
+  ]},
+  pro_009a:{speaker:'narrator', text:'你的指尖触到石碑的一瞬间，一道星光从碑面亮起，沿着你的手臂向上蔓延。\n你听到了什么——像是无数人的低语。', scene:'shrine', next:'pro_010'},
+  pro_009b:{speaker:'kael', text:'六十年前也有人像你一样站在这里。他问了太多问题。最后他走出了村庄，再也没有回来。\n但在那之前——他触碰了石碑。', scene:'shrine', next:'pro_010'},
+  pro_009c:{speaker:'kael', text:'碰过。\n（他沉默了很久）\n所以我活到了现在。但我没有走进石碑里面。而你——你可能需要走进去。', scene:'shrine', next:'pro_010'},
+  pro_010:{speaker:'narrator', text:'一阵风从碑面吹来，带着古老尘土的味道。你感觉到某种东西在石碑深处等待着。', scene:'shrine', next:'pro_011'},
+  pro_011:{speaker:'lyra', text:'别碰。', scene:'square'},
+  pro_012:{speaker:'narrator', text:'一个声音从人群中响起。你转身，看见一个披着深色斗篷的年轻女子。她的眼睛在夜色中微微发亮。', scene:'square', choices:[
+    {text:'问她为什么', next:'pro_012a', effects:{asked_lyra:true, affection_lyra:5}},
+    {text:'\"你是这里的村民？\"', next:'pro_012b', effects:{asked_village:true}},
+    {text:'等她说下去', next:'pro_012c'}
+  ]},
+  pro_012a:{speaker:'lyra', text:'他们告诉你你是\"被选中\"的那个人，对不对？\n上一个被选中的人是你祖父。他走进石碑后，再也没有出来。', scene:'square', next:'pro_013'},
+  pro_012b:{speaker:'lyra', text:'我三年前走到这个村口，然后折返了。\n但我一直在附近。我知道一些他们不会告诉你的事。', scene:'square', next:'pro_013'},
+  pro_012c:{speaker:'lyra', text:'（她看了一眼石碑）我给你三个字：别进去。\n剩下的你自己决定。', scene:'square', next:'pro_013'},
+  pro_013:{speaker:'narrator', text:'凯尔在一旁沉默不语。莉拉的出现让他脸上掠过一丝复杂的表情。\n你在村庄的第一个夜晚，就这样开始了。', scene:'square', next:'pro_014'},
+  pro_014:{speaker:'narrator', text:'夜深了。你在村中徘徊。三个人的身影在夜色中格外清晰。', scene:'square', choices:[
+    {text:'走向石碑旁的凯尔', next:'pro_014a', effects:{talk_kael:true, affection_kael:2}},
+    {text:'跟上离开的莉拉', next:'pro_014b', effects:{talk_lyra:true, affection_lyra:3}},
+    {text:'找铁匠马库斯聊聊', next:'pro_014c', effects:{talk_marcus:true, affection_marcus:2}}
+  ]},
+  pro_014a:{speaker:'kael', text:'你还没走？\n也对，没人能在这时候睡着。', scene:'shrine', next:'pro_015'},
+  pro_014b:{speaker:'lyra', text:'你跟过来了。\n（她没回头，但脚步慢了下来）你在想我说的话。', scene:'tree', next:'pro_015'},
+  pro_014c:{speaker:'marcus', text:'（铁锤声停了下来）你不是来打铁的。也对，这个点了。\n你是来问那个石碑的事吧。', scene:'square', next:'pro_015'},
+  pro_015:{speaker:'narrator', text:'夜空中有一颗星星突然暗了下去。然后又一颗。\n像是有人在远处一盏一盏地关灯。', scene:'field', next:'pro_016'},
+  pro_016:{speaker:'lyra', text:'你看到了吗？它们正在熄灭。\n每熄灭一颗，这个世界就会失去一样东西。\n先是颜色，然后是记忆，最后是——', scene:'field', next:'pro_017'},
+  pro_017:{speaker:'narrator', text:'她没有说完。但你已经明白了。\n你必须在天亮之前做出选择。', scene:'field', next:'pro_018'},
+  pro_018:{speaker:'narrator', text:'三个声音在你脑海中回响：\n凯尔说这是宿命，你必须走进石碑。\n莉拉说这是陷阱，你必须离开。\n马库斯说——他只说了两个字：\"你自己。\"', scene:'field', next:'pro_019'},
+  pro_019:{speaker:'narrator', text:'黎明前的星野，风停了。整个村庄都在等你的一句话。', scene:'field', choices:[
+    {text:'走向石碑——接受宿命', next:'pro_019a', effects:{choose_stone:true}},
+    {text:'走向村口——相信莉拉', next:'pro_019b', effects:{choose_leave:true}},
+    {text:'站在原地——听自己的', next:'pro_019c', effects:{choose_self:true}},
+    {text:'问三人还有没有别的路', next:'pro_019d', effects:{choose_ask:true, affection_lyra:2, affection_kael:2, affection_marcus:2}}
+  ]},
+  pro_019a:{speaker:'narrator', text:'你走向石碑。凯尔点了点头，眼中带着说不清的复杂。\n你的手碰上了石碑的表面——这一次，它没有发光。\n它只是……打开了。', scene:'shrine', next:'pro_020'},
+  pro_019b:{speaker:'narrator', text:'你转身走向村口。莉拉跟了上来，步伐很轻。\n但就在你踏出村口的那一刻，你回头看了一眼——\n整座村庄正在褪色。', scene:'forest', next:'pro_020'},
+  pro_019c:{speaker:'narrator', text:'你谁也没选。\n你只是站着。\n然后你发现——那三个人的目光同时移开了。像是他们早就知道你会这么做。', scene:'field', next:'pro_020'},
+  pro_019d:{speaker:'kael', text:'（三人对视了一眼）\n有。但是那条路——没有人走过。', scene:'field', next:'pro_020'},
+  pro_020:{speaker:'narrator', text:'天色将明。\n你的故事，才刚刚开始……', scene:'field', next:'ch1_001'},
+
+  // ====== 第一章 ======
+  ch1_001:{speaker:'narrator', text:'第二天，阳光没有如约而至。\n天空变成了深紫色，星辰在白昼中依然可见。', scene:'square', next:'ch1_002'},
+  ch1_002:{speaker:'kael', text:'比预期来得更快。我们需要在日落之前做出决定。\n石碑内部——或者什么都没有。', scene:'shrine', next:'ch1_003'},
+  ch1_003:{speaker:'lyra', text:'不对。你们漏了一个地方。', scene:'square', next:'ch1_004'},
+  ch1_004:{speaker:'lyra', text:'星语内殿。那是一座建在裂缝上的神殿。\n很久以前，选择者不是走进石碑——而是走进那里。', scene:'tower', next:'ch1_005'},
+  ch1_005:{speaker:'narrator', text:'三个方向摆在你面前。每一个都对应着一种命运的可能性。', scene:'field', choices:[
+    {text:'和凯尔一起走进石碑', next:'ch1_006a', effects:{path_stone:true}},
+    {text:'和莉拉一起去星语内殿', next:'ch1_006b', effects:{path_temple:true}},
+    {text:'和马库斯去村外寻找证据', next:'ch1_006c', effects:{path_truth:true}}
+  ]},
+  ch1_006a:{speaker:'kael', text:'好。带上这个——这是上一任选择者留下的笔记。\n你会需要它。', scene:'shrine', next:'ch1_007'},
+  ch1_006b:{speaker:'lyra', text:'（她微微一笑）你做出了我没想到的选择。\n走吧——路有点远。', scene:'tower', next:'ch1_007'},
+  ch1_006c:{speaker:'marcus', text:'嗯。跟我来。\n我从十五岁就开始挖地道了——不是为了逃，是为了知道下面有什么。', scene:'square', next:'ch1_007'},
+  ch1_007:{speaker:'narrator', text:'你选择的道路将决定星落的结局。', scene:'field', next:'ch1_008'},
+  ch1_008:{speaker:'narrator', text:'（第一章剧情继续展开……）\n故事还在继续，后面的章节正在星空中编织。', scene:'field', next:'end_001'},
+
+  // ====== 结局 ======
+  end_001:{speaker:'narrator', text:'星辰在你的注视下停止了移动。\n不是因为你征服了它们——而是因为它们选择了你。', scene:'field'},
+  end_002:{speaker:'kael', text:'六十年前那个人走出去时也带着同样的表情。\n你比任何人都准备好了。', scene:'shrine', next:'end_003'},
+  end_003:{speaker:'lyra', text:'（她站在远处，风吹起她的斗篷）\n不管你选择了什么——记住：是你选的。不是星星。不是石碑。不是我们。', scene:'field', next:'end_004'},
+  end_004:{speaker:'narrator', text:'天边的第一缕光穿透了紫色的云层。\n星落之夜——结束了。\n但真正有意义的是，你在星空下做出的那个选择。', scene:'field'},
+};
+
+// ========== 游戏引擎 ==========
+let currentId = null;
+let flags = {};
+let choicesResult = null;
+
+function getChar(id){return CHARS[id]||null}
+
+function getNext(id) {
+  const n = DIALOGUES[id];
+  if (!n) return null;
+  // 有choices则停止，等待玩家选择
+  if (n.choices) return null;
+  if (n.next) return n.next;
   return null;
 }
-engine.on("sceneChange", (sceneId) => {
-  const scene = sceneManager.getScene(sceneId);
-  if (scene) {
-    sceneManager.switchScene(sceneId);
-    let chapterName = "";
-    const node = engine.getCurrentNode();
-    if (node) {
-      const id = node.id || "";
-      if (id.startsWith("pro")) chapterName = "\u5E8F\u5E55";
-      else if (id.startsWith("ch1")) chapterName = "\u7B2C\u4E00\u7AE0";
-      else if (id.startsWith("ch2")) chapterName = "\u7B2C\u4E8C\u7AE0";
-      else if (id.startsWith("end")) chapterName = "\u7ED3\u5C40";
+
+function showNode(id) {
+  const n = DIALOGUES[id];
+  if (!n) { endGame(); return; }
+  currentId = id;
+  
+  // 场景切换
+  if (n.scene && SCENES[n.scene]) {
+    const s = SCENES[n.scene];
+    const bg = document.getElementById('bg');
+    if (bg.style.background !== s.bg) {
+      document.getElementById('bg-overlay').style.opacity = '1';
+      setTimeout(() => {
+        bg.style.background = s.bg;
+        document.getElementById('bg-overlay').style.opacity = '0';
+      }, 300);
     }
-    hud.setScene(chapterName, scene.name || "");
-    hud.refreshAffections();
-    saveManager.autoSave({
-      currentNodeId: engine.getCurrentNode()?.id || "",
-      sceneId,
-      sceneName: scene.name || "",
-      nodePreview: engine.getCurrentNode()?.text?.slice(0, 20) || ""
-    });
+    document.getElementById('hud-chapter').textContent = 
+      (id.startsWith('pro')?'序幕':id.startsWith('ch1')?'第一章':id.startsWith('end')?'结局':'') + 
+      ' · ' + s.name;
+    refreshAffections();
   }
-});
-engine.on("nodeStart", (nodeData) => {
-  choicePanel.hide();
-  dialogBox.startNode(nodeData);
-});
-var processingNodeEnd = false;
-engine.on("nodeEnd", (endData) => {
-  if (processingNodeEnd) return;
-  processingNodeEnd = true;
-  try {
-    const node = engine.getCurrentNode();
-    if (!node) return;
-    if (endData?.clicked) {
-      if (node.choices && node.choices.length > 0) {
-        const available = engine.getAvailableChoices();
-        if (available.length > 0) {
-          choicePanel.show(available);
-        }
-      } else {
-        if (node.next) {
-          engine.jump(node.next);
-        } else {
-          const nextId = getNextNodeId(node.id);
-          if (nextId) {
-            engine.jump(nextId);
+
+  // 说话者
+  const char = getChar(n.speaker);
+  const avatar = document.getElementById('dialog-avatar');
+  const name = document.getElementById('dialog-name');
+  const text = document.getElementById('dialog-text');
+  const speaker = document.getElementById('dialog-speaker');
+  
+  if (char) {
+    speaker.style.display = 'flex';
+    avatar.textContent = char.emoji || '✨';
+    avatar.style.background = char.color ? char.color + '22' : 'rgba(129,140,248,0.15)';
+    avatar.style.borderColor = char.color ? char.color + '44' : 'rgba(129,140,248,0.25)';
+    name.textContent = char.name || n.speaker;
+    name.style.color = char.color || '#a5b4fc';
+    text.classList.remove('center','italic');
+  } else {
+    speaker.style.display = 'none';
+    text.classList.add('center');
+    text.classList.remove('italic');
+  }
+
+  // 打字机效果
+  typeText(text, n.text || '', () => {
+    // 打字完成
+    if (n.choices) {
+      showChoices(n.choices);
+    } else if (n.next) {
+      document.getElementById('dialog-indicator').textContent = '▼ 点击继续';
+      document.getElementById('dialog-indicator').style.color = '#a5b4fc';
+    }
+  });
+}
+
+let typeTimer = null;
+function typeText(el, fullText, onDone) {
+  if (typeTimer) clearInterval(typeTimer);
+  el.textContent = '';
+  let idx = 0;
+  const speed = 40;
+  document.getElementById('dialog-indicator').textContent = '▍ 讲述中...';
+  document.getElementById('dialog-indicator').style.color = '#94a3b8';
+  
+  function tick() {
+    if (idx < fullText.length) {
+      el.textContent = fullText.slice(0, idx + 1);
+      idx++;
+      // 标点符号多停一会儿
+      const delay = '，。！？；\n'.includes(fullText[idx]) ? speed * 3 : speed;
+      typeTimer = setTimeout(tick, delay);
+    } else {
+      el.textContent = fullText;
+      if (typeTimer) clearInterval(typeTimer);
+      typeTimer = null;
+      if (onDone) onDone();
+    }
+  }
+  typeTimer = setTimeout(tick, speed);
+}
+
+function skipTyping() {
+  const n = DIALOGUES[currentId];
+  if (!n) return;
+  if (typeTimer) {
+    clearInterval(typeTimer);
+    typeTimer = null;
+  }
+  document.getElementById('dialog-text').textContent = n.text || '';
+  document.getElementById('dialog-indicator').textContent = '▼ 点击继续';
+  document.getElementById('dialog-indicator').style.color = '#a5b4fc';
+  if (n.choices) showChoices(n.choices);
+}
+
+function showChoices(choices) {
+  const container = document.getElementById('choices-inner');
+  container.innerHTML = '';
+  choices.forEach((c, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'choice-btn';
+    btn.innerHTML = '<span class="star">✦</span> ' + c.text;
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // 应用效果
+      if (c.effects) {
+        Object.keys(c.effects).forEach(k => {
+          if (k.startsWith('affection_')) {
+            const cid = k.replace('affection_', '');
+            flags['aff_' + cid] = (flags['aff_' + cid] || 0) + c.effects[k];
           } else {
-            console.log(`[Game] \u5267\u60C5\u7EC8\u70B9: ${node.id}`);
+            flags[k] = c.effects[k];
           }
-        }
+        });
+        refreshAffections();
       }
-      return;
+      document.getElementById('choices').classList.remove('show');
+      if (c.next) showNode(c.next);
+    });
+    container.appendChild(btn);
+  });
+  document.getElementById('choices').classList.add('show');
+  document.getElementById('dialog-indicator').textContent = '';
+}
+
+function refreshAffections() {
+  const container = document.getElementById('hud-affections');
+  container.innerHTML = '';
+  const chars = [
+    {id:'kael',emoji:'🧙',color:'#f59e0b'},
+    {id:'lyra',emoji:'🏹',color:'#6366f1'},
+    {id:'marcus',emoji:'🗡️',color:'#475569'}
+  ];
+  chars.forEach(c => {
+    const val = flags['aff_' + c.id] || 0;
+    const div = document.createElement('span');
+    div.className = 'hud-aff' + (val > 0 ? ' show' : '');
+    const dotColor = val >= 10 ? '#22c55e' : val >= 5 ? '#a5b4fc' : val > 0 ? c.color : '#475569';
+    div.innerHTML = `<span class="hud-aff-dot" style="background:${dotColor}"></span>${c.emoji} ${val}`;
+    container.appendChild(div);
+  });
+}
+
+// 存档
+function saveGame(slot) {
+  const data = {
+    nodeId: currentId,
+    flags: JSON.parse(JSON.stringify(flags)),
+    time: Date.now(),
+    chapter: currentId?.startsWith('pro')?'序幕':currentId?.startsWith('ch1')?'第一章':'',
+    preview: DIALOGUES[currentId]?.text?.slice(0,20) || ''
+  };
+  const saves = JSON.parse(localStorage.getItem('starnight_saves') || '{}');
+  saves['slot_' + slot] = data;
+  localStorage.setItem('starnight_saves', JSON.stringify(saves));
+  refreshMenu();
+}
+
+function loadGame(slot) {
+  const saves = JSON.parse(localStorage.getItem('starnight_saves') || '{}');
+  const data = saves['slot_' + slot];
+  if (!data) return;
+  flags = data.flags || {};
+  document.getElementById('menu-panel').classList.remove('show');
+  showNode(data.nodeId);
+  document.getElementById('title').classList.add('hide');
+  document.getElementById('hud').classList.add('show');
+  document.getElementById('menu-btn').classList.add('show');
+}
+
+function getSaves() {
+  return JSON.parse(localStorage.getItem('starnight_saves') || '{}');
+}
+
+// 菜单
+function toggleMenu() {
+  const panel = document.getElementById('menu-panel');
+  panel.classList.toggle('show');
+  if (panel.classList.contains('show')) refreshMenu();
+}
+
+function refreshMenu() {
+  const box = document.getElementById('menu-box');
+  box.innerHTML = '<h3>菜单</h3>';
+  // 继续游戏
+  const cont = document.createElement('button');
+  cont.className = 'menu-item'; cont.textContent = '▶ 继续游戏';
+  cont.addEventListener('click', () => document.getElementById('menu-panel').classList.remove('show'));
+  box.appendChild(cont);
+
+  box.innerHTML += '<div style="color:#64748b;font-size:13px;margin:12px 0 6px;letter-spacing:1px">存档</div>';
+  for (let i = 1; i <= 3; i++) {
+    const saves = getSaves();
+    const d = saves['slot_' + i];
+    const slot = document.createElement('button');
+    slot.className = 'save-slot';
+    if (d) {
+      const t = new Date(d.time);
+      slot.innerHTML = `槽位 ${i} <span class="time">${t.getMonth()+1}/${t.getDate()} ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}</span><span class="preview">${d.chapter||''} · ${d.preview||''}</span>`;
+      slot.addEventListener('click', () => loadGame(i));
+    } else {
+      slot.innerHTML = `槽位 ${i} <span class="time">空</span>`;
+      slot.addEventListener('click', () => saveGame(i));
     }
-    if (node.choices && node.choices.length > 0) {
-      const available = engine.getAvailableChoices();
-      if (available.length > 0 && !endData?.isJump && !endData?.isEnd) {
-        choicePanel.show(available);
-      }
-    }
-  } finally {
-    processingNodeEnd = false;
+    box.appendChild(slot);
+  }
+  // 自动存档
+  const saves = getSaves();
+  if (saves['auto']) {
+    const d = saves['auto'];
+    const t = new Date(d.time);
+    const slot = document.createElement('button');
+    slot.className = 'save-slot';
+    slot.innerHTML = `自动存档 <span class="time">${t.getMonth()+1}/${t.getDate()} ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}</span><span class="preview">${d.chapter||''} · ${d.preview||''}</span>`;
+    slot.addEventListener('click', () => loadGame('auto'));
+    box.appendChild(slot);
+  }
+
+  const ret = document.createElement('button');
+  ret.className = 'menu-item'; ret.textContent = '⌂ 返回标题';
+  ret.style.marginTop = '12px';
+  ret.addEventListener('click', () => {
+    document.getElementById('menu-panel').classList.remove('show');
+    document.getElementById('hud').classList.remove('show');
+    document.getElementById('menu-btn').classList.remove('show');
+    document.getElementById('dialog').classList.remove('show');
+    document.getElementById('choices').classList.remove('show');
+    document.getElementById('ending').classList.remove('show');
+    document.getElementById('title').classList.remove('hide');
+  });
+  box.appendChild(ret);
+}
+
+// 结局
+function endGame() {
+  document.getElementById('dialog').classList.remove('show');
+  document.getElementById('choices').classList.remove('show');
+  document.getElementById('menu-btn').classList.remove('show');
+  document.getElementById('hud').classList.remove('show');
+  const ending = document.getElementById('ending');
+  ending.classList.add('show');
+  const hasChosen = flags.choose_stone || flags.choose_leave || flags.choose_self || flags.choose_ask;
+  if (hasChosen) {
+    document.querySelector('#ending h2').textContent = '星河永驻';
+    document.querySelector('#ending p').textContent = '你在星落之夜做出的选择，将会在星辰之间流传很久。\n不是每一个走进星落村的人都能找到自己的答案——\n但你找到了。';
+  } else {
+    document.querySelector('#ending h2').textContent = '星落归尘';
+    document.querySelector('#ending p').textContent = '星辰依旧在移动。也许它们会再等六十年。\n也许不会。\n但你已经不再是被选中的人了。';
+  }
+}
+
+// 开始游戏
+function startGame() {
+  flags = {};
+  document.getElementById('title').classList.add('hide');
+  document.getElementById('hud').classList.add('show');
+  document.getElementById('menu-btn').classList.add('show');
+  document.getElementById('dialog').classList.add('show');
+  showNode('pro_001');
+  // 自动存档
+  setTimeout(() => {
+    const saves = JSON.parse(localStorage.getItem('starnight_saves') || '{}');
+    saves['auto'] = {nodeId:currentId, flags:{}, time:Date.now(), chapter:'序幕', preview:''};
+    localStorage.setItem('starnight_saves', JSON.stringify(saves));
+  }, 1000);
+}
+
+// ========== 事件绑定 ==========
+
+// 标题点击 → 开始
+document.getElementById('title').addEventListener('click', startGame);
+document.getElementById('title').addEventListener('touchstart', (e) => { e.preventDefault(); startGame(); });
+
+// 对话框点击 → 推进
+document.getElementById('dialog-inner').addEventListener('click', () => {
+  if (typeTimer) {
+    skipTyping();
+    return;
+  }
+  const n = DIALOGUES[currentId];
+  if (!n) return;
+  if (n.choices) {
+    showChoices(n.choices);
+    return;
+  }
+  if (n.next) {
+    showNode(n.next);
+    // 自动存档
+    const saves = JSON.parse(localStorage.getItem('starnight_saves') || '{}');
+    saves['auto'] = {nodeId:n.next, flags:JSON.parse(JSON.stringify(flags)), time:Date.now(), chapter:currentId?.startsWith('pro')?'序幕':currentId?.startsWith('ch1')?'第一章':'', preview:DIALOGUES[n.next]?.text?.slice(0,20)||''};
+    localStorage.setItem('starnight_saves', JSON.stringify(saves));
   }
 });
-engine.on("choice", (choiceData) => {
-  hud.refreshAffections();
+
+// 菜单
+document.getElementById('menu-btn').addEventListener('click', toggleMenu);
+document.getElementById('menu-overlay').addEventListener('click', () => document.getElementById('menu-panel').classList.remove('show'));
+
+// 返回标题
+document.querySelector('#ending .btn').addEventListener('click', () => {
+  document.getElementById('ending').classList.remove('show');
+  document.getElementById('title').classList.remove('hide');
+  document.getElementById('dialog').classList.remove('show');
 });
-function startGame() {
-  hud.hide();
-  dialogBox.hide();
-  choicePanel.hide();
-  engine.start("pro_001");
-  dialogBox.show();
-  hud.show();
-  saveManager.autoSave({
-    currentNodeId: "pro_001",
-    sceneId: "scene_forest",
-    sceneName: "\u5E7D\u8BED\u68EE\u6797",
-    nodePreview: ""
-  });
-}
-function showTitleScreen() {
-  sceneManager.setScene("scene_field");
-  const titleContainer = document.createElement("div");
-  titleContainer.id = "title-screen";
-  Object.assign(titleContainer.style, {
-    position: "fixed",
-    inset: "0",
-    zIndex: "100",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "radial-gradient(ellipse at center, rgba(10, 14, 26, 0.6) 0%, rgba(10, 14, 26, 0.9) 100%)",
-    cursor: "pointer",
-    userSelect: "none"
-  });
-  const title = document.createElement("h1");
-  title.textContent = "\u661F\u843D\u4E4B\u591C";
-  Object.assign(title.style, {
-    fontSize: "clamp(36px, 8vw, 64px)",
-    fontWeight: "300",
-    fontFamily: "'Crimson Text', 'Noto Serif SC', serif",
-    color: "#e2e8f0",
-    textShadow: "0 0 30px rgba(251, 191, 36, 0.3), 0 0 60px rgba(251, 191, 36, 0.1)",
-    letterSpacing: "12px",
-    marginBottom: "16px",
-    animation: "titlePulse 3s ease-in-out infinite"
-  });
-  const subtitle = document.createElement("p");
-  subtitle.textContent = "\u2014 \u661F\u8FB0\u5931\u5E8F\uFF0C\u9009\u62E9\u91CD\u5199\u547D\u8FD0 \u2014";
-  Object.assign(subtitle.style, {
-    fontSize: "clamp(14px, 2vw, 18px)",
-    color: "#94a3b8",
-    fontFamily: "system-ui, sans-serif",
-    letterSpacing: "4px",
-    marginBottom: "48px"
-  });
-  const startBtn = document.createElement("div");
-  startBtn.textContent = "\u2726 \u70B9\u51FB\u5F00\u59CB \u2726";
-  Object.assign(startBtn.style, {
-    fontSize: "clamp(16px, 2.5vw, 22px)",
-    color: "#fbbf24",
-    fontFamily: "system-ui, sans-serif",
-    letterSpacing: "4px",
-    opacity: "0.7",
-    animation: "startPulse 2s ease-in-out infinite",
-    padding: "12px 32px",
-    border: "1px solid rgba(251, 191, 36, 0.2)",
-    borderRadius: "8px",
-    transition: "all 0.3s ease"
-  });
-  startBtn.addEventListener("mouseenter", () => {
-    startBtn.style.background = "rgba(251, 191, 36, 0.1)";
-    startBtn.style.opacity = "1";
-  });
-  startBtn.addEventListener("mouseleave", () => {
-    startBtn.style.background = "transparent";
-    startBtn.style.opacity = "0.7";
-  });
-  startBtn.addEventListener("touchstart", () => {
-    startBtn.style.background = "rgba(251, 191, 36, 0.15)";
-    startBtn.style.opacity = "1";
-  }, { passive: true });
-  startBtn.addEventListener("touchend", () => {
-    startBtn.style.background = "transparent";
-    startBtn.style.opacity = "0.7";
-  }, { passive: true });
-  titleContainer.appendChild(title);
-  titleContainer.appendChild(subtitle);
-  titleContainer.appendChild(startBtn);
-  ROOT.appendChild(titleContainer);
-  const style = document.createElement("style");
-  style.textContent = `
-    @keyframes titlePulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.85; } }
-    @keyframes startPulse { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; } }
-    body { -webkit-tap-highlight-color: transparent; }
-  `;
-  ROOT.appendChild(style);
-  const handleStart = () => {
-    titleContainer.style.opacity = "0";
-    titleContainer.style.transition = "opacity 0.6s ease";
-    setTimeout(() => {
-      if (titleContainer.parentNode) titleContainer.parentNode.removeChild(titleContainer);
-      startGame();
-    }, 600);
-  };
-  titleContainer.addEventListener("click", handleStart);
-  titleContainer.addEventListener("touchstart", (e) => {
-    e.preventDefault();
-  }, { passive: false });
-  titleContainer.addEventListener("touchend", (e) => {
-    handleStart();
-  }, { passive: true });
-}
-showTitleScreen();
-if (typeof window !== "undefined") {
-  window.__game = { flags, engine, sceneManager, dialogBox, choicePanel };
-}
-export {
-  choicePanel,
-  dialogBox,
-  engine,
-  flags,
-  hud,
-  menuUI,
-  saveManager,
-  sceneManager
-};
+
+// 加载
+window.addEventListener('load', () => {
+  document.getElementById('loader').classList.add('hide');
+  // 检查是否有自动存档
+  const saves = getSaves();
+  if (saves['auto']) {
+    // 显示标题，不强制读档
+  }
+});
 </script>
 </body>
 </html>
