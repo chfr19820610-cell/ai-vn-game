@@ -1232,12 +1232,6 @@ function DialogBox(opts) {
     }
   };
   if (engine2 && engine2.on) {
-    const offNodeStart = engine2.on("nodeStart", (node) => {
-      if (node && node.text !== void 0) {
-        api.typeText(node.text, node.speaker || null, node.mode);
-      }
-    });
-    cleanupFns.push(offNodeStart);
     const offTypingChar = engine2.on("typingChar", (data) => {
       if (data && data.progress !== void 0) {
         api.setTypingProgress(data.progress, data.fullText);
