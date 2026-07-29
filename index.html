@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>星落之夜</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{width:100%;height:100%;overflow:hidden;font-family:system-ui,'PingFang SC','Microsoft YaHei',sans-serif;touch-action:manipulation;user-select:none}
+
+/* 场景背景 */
+#bg{position:fixed;inset:0;z-index:0;transition:background 1s;background:radial-gradient(ellipse at 30% 40%,#0f172a 0%,#1e1b4b 50%,#0a0e1a 100%)}
+#bg-overlay{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:0;transition:opacity .6s;background:#0a0e1a}
+#bg-particles{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+
+/* 对话框 */
+#dialog{position:fixed;bottom:0;left:0;right:0;z-index:50;padding:0 max(16px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom,16px)) max(16px,env(safe-area-inset-left));display:none;opacity:0;transition:opacity .3s}
+#dialog.show{display:block;opacity:1}
+#dialog-inner{max-width:720px;margin:0 auto;background:rgba(15,23,42,.9);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-radius:14px;border:1px solid rgba(129,140,248,.15);padding:16px 20px;cursor:pointer;position:relative}
+#dialog-speaker{display:flex;align-items:center;gap:8px;margin-bottom:8px;min-height:32px}
+#dialog-avatar{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;background:rgba(129,140,248,.15);border:1px solid rgba(129,140,248,.25);flex-shrink:0;transition:all .3s}
+#dialog-name{font-size:14px;font-weight:600;color:#a5b4fc;letter-spacing:.5px;transition:color .3s}
+#dialog-text{font-size:16px;line-height:1.8;color:#e2e8f0;min-height:2.8em;white-space:pre-wrap;word-break:break-word;padding-left:2px}
+#dialog-text.center{text-align:center;color:#94a3b8}
+#dialog-text.italic{font-style:italic;opacity:.85}
+#dialog-indicator{text-align:right;font-size:12px;color:#94a3b8;margin-top:6px;min-height:18px;transition:color .2s}
+
+/* 选项面板 */
+#choices{position:fixed;bottom:0;left:0;right:0;z-index:55;padding:0 max(16px,env(safe-area-inset-right)) max(160px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));display:none}
+#choices.show{display:block}
+#choices-inner{max-width:600px;margin:0 auto;display:flex;flex-direction:column;gap:10px}
+.choice-btn{display:block;width:100%;padding:14px 18px;background:rgba(15,23,42,.88);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(129,140,248,.2);border-radius:10px;color:#e2e8f0;font-size:15px;line-height:1.5;cursor:pointer;text-align:left;transition:all .2s;font-family:inherit}
+.choice-btn:hover,.choice-btn:active{background:rgba(99,102,241,.2);border-color:rgba(99,102,241,.5);transform:translateX(4px)}
+.choice-btn.disabled{opacity:.4;cursor:not-allowed}
+.choice-btn .star{color:#fbbf24;margin-right:8px;font-size:12px}
+
+/* 顶部HUD */
+#hud{position:fixed;top:0;left:0;right:0;z-index:40;padding:max(8px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) 8px max(16px,env(safe-area-inset-left));display:none;background:linear-gradient(180deg,rgba(10,14,26,.7) 0%,transparent 100%)}
+#hud.show{display:block}
+#hud-inner{max-width:720px;margin:0 auto;display:flex;justify-content:space-between;align-items:center}
+#hud-chapter{font-size:12px;color:#94a3b8;letter-spacing:1px}
+#hud-affections{display:flex;gap:12px;font-size:12px}
+.hud-aff{display:flex;align-items:center;gap:4px;opacity:0;transition:opacity .5s}
+.hud-aff.show{opacity:1}
+.hud-aff-dot{width:8px;height:8px;border-radius:50%;transition:all .5s}
+
+/* 菜单按钮 */
+#menu-btn{position:fixed;top:max(8px,env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right));z-index:60;width:36px;height:36px;border:none;background:rgba(255,255,255,.06);border-radius:8px;color:#94a3b8;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;display:none}
+#menu-btn.show{display:flex}
+#menu-btn:hover{background:rgba(255,255,255,.1);color:#e2e8f0}
+
+/* 菜单弹窗 */
+#menu-panel{position:fixed;inset:0;z-index:200;display:none;align-items:center;justify-content:center}
+#menu-panel.show{display:flex}
+#menu-overlay{position:absolute;inset:0;background:rgba(0,0,0,.6)}
+#menu-box{position:relative;background:rgba(15,23,42,.95);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-radius:16px;border:1px solid rgba(129,140,248,.12);padding:24px;width:min(380px,calc(100vw-32px));max-height:80vh;overflow-y:auto}
+#menu-box h3{color:#e2e8f0;font-size:18px;margin-bottom:16px;letter-spacing:1px}
+.menu-item{display:block;width:100%;padding:12px 16px;margin-bottom:8px;background:rgba(255,255,255,.04);border:1px solid rgba(129,140,248,.1);border-radius:8px;color:#cbd5e1;font-size:14px;cursor:pointer;text-align:left;transition:all .2s;font-family:inherit}
+.menu-item:hover{background:rgba(99,102,241,.15);border-color:rgba(99,102,241,.3);color:#e2e8f0}
+
+/* 存档槽 */
+.save-slot{display:block;width:100%;padding:10px 14px;margin-bottom:6px;background:rgba(255,255,255,.03);border:1px solid rgba(129,140,248,.08);border-radius:8px;color:#94a3b8;font-size:13px;cursor:pointer;text-align:left;transition:all .2s;font-family:inherit}
+.save-slot:hover{background:rgba(99,102,241,.1);border-color:rgba(99,102,241,.2)}
+.save-slot .time{color:#64748b;font-size:11px}
+.save-slot .preview{color:#cbd5e1;font-size:13px;display:block;margin-top:4px}
+
+/* 标题画面 */
+#title{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,rgba(10,14,26,.4) 0%,rgba(10,14,26,.85) 100%);cursor:pointer;transition:opacity .6s}
+#title.hide{opacity:0;pointer-events:none}
+#title.removed{display:none}
+#title h1{font-size:clamp(32px,8vw,56px);color:#e2e8f0;letter-spacing:6px;font-weight:300;animation:glow 3s ease-in-out infinite;text-shadow:0 0 20px rgba(129,140,248,.3)}
+@keyframes glow{0%,100%{opacity:1;text-shadow:0 0 20px rgba(129,140,248,.3)}50%{opacity:.85;text-shadow:0 0 40px rgba(129,140,248,.5)}}
+#title .sub{font-size:clamp(13px,3vw,16px);color:#64748b;margin-top:12px;letter-spacing:3px}
+#title .hint{font-size:clamp(12px,2.5vw,14px);color:#475569;margin-top:32px;animation:blink 2s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* 结局画面 */
+#ending{position:fixed;inset:0;z-index:200;display:none;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,rgba(10,14,26,.5) 0%,rgba(10,14,26,.9) 100%)}
+#ending.show{display:flex}
+#ending h2{font-size:clamp(24px,6vw,42px);color:#e2e8f0;letter-spacing:4px;font-weight:300;margin-bottom:16px}
+#ending p{font-size:clamp(14px,3vw,18px);color:#94a3b8;max-width:500px;text-align:center;line-height:2;padding:0 20px}
+#ending .btn{display:inline-block;margin-top:32px;padding:12px 32px;border:1px solid rgba(129,140,248,.2);border-radius:8px;color:#a5b4fc;font-size:14px;cursor:pointer;transition:all .2s;background:rgba(129,140,248,.06)}
+#ending .btn:hover{background:rgba(99,102,241,.15);border-color:rgba(99,102,241,.3)}
+
+/* 加载动画 */
+#loader{position:fixed;inset:0;z-index:300;display:flex;align-items:center;justify-content:center;background:#0a0e1a}
+#loader.hide{opacity:0;pointer-events:none;transition:opacity .5s}
+.loader-spinner{width:24px;height:24px;border:2px solid rgba(129,140,248,.1);border-top-color:#6366f1;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* 移动端触摸优化 */
+@media(max-width:480px){
+  #dialog-inner{padding:12px;border-radius:10px}
+  #dialog-text{font-size:15px;line-height:1.7;min-height:2.6em}
+  #choices-inner{gap:8px}
+  .choice-btn{padding:13px 14px;font-size:14px;border-radius:8px}
+}
+@media(min-width:1024px){
+  #dialog-inner{padding:20px 28px}
+  #dialog-text{font-size:17px}
+}
+</style>
+</head>
+<body>
+
+<div id="loader"><div class="loader-spinner"></div></div>
+<div id="bg"><div id="bg-particles"></div></div>
+<div id="bg-overlay"></div>
+
+<div id="title">
+  <h1>星落之夜</h1>
+  <div class="sub">星辰失序，选择重写命运</div>
+  <div class="hint">✦ 点击开始 ✦</div>
+</div>
+
+<div id="hud">
+  <div id="hud-inner">
+    <span id="hud-chapter"></span>
+    <div id="hud-affections"></div>
+  </div>
+</div>
+
+<div id="dialog">
+  <div id="dialog-inner">
+    <div id="dialog-speaker"><span id="dialog-avatar"></span><span id="dialog-name"></span></div>
+    <div id="dialog-text"></div>
+    <div id="dialog-indicator"></div>
+  </div>
+</div>
+
+<div id="choices"><div id="choices-inner"></div></div>
+
+<button id="menu-btn">≡</button>
+
+<div id="menu-panel">
+  <div id="menu-overlay"></div>
+  <div id="menu-box"><h3>菜单</h3></div>
+</div>
+
+<div id="ending">
+  <h2></h2>
+  <p></p>
+  <div class="btn">返回标题</div>
+</div>
+
+<script>
+// ========== 角色数据 ==========
+const CHARS = {
+  narrator: {name:'旁白', emoji:'🌙', color:'#94a3b8'},
+  lyra:     {name:'莉拉', emoji:'🏹', color:'#6366f1'},
+  kael:     {name:'凯尔', emoji:'🧙', color:'#f59e0b'},
+  marcus:   {name:'马库斯', emoji:'🗡️', color:'#475569'}
+};
+
+// ========== 场景数据 ==========
+const SCENES = {
+  forest: {name:'幽语森林', bg:'radial-gradient(ellipse at 30% 40%,#0a1a0f 0%,#0f172a 50%,#0a0e1a 100%)'},
+  square: {name:'星落广场', bg:'radial-gradient(ellipse at 30% 40%,#0f172a 0%,#1e1b4b 50%,#0a0e1a 100%)'},
+  shrine: {name:'守碑处', bg:'radial-gradient(ellipse at 30% 40%,#111827 0%,#1e1b4b 50%,#0a0e1a 100%)'},
+  tower:  {name:'占星塔', bg:'radial-gradient(ellipse at 30% 40%,#1e1b4b 0%,#0f172a 50%,#0a0e1a 100%)'},
+  tree:   {name:'古树下', bg:'radial-gradient(ellipse at 30% 40%,#0a1a0f 0%,#0f172a 50%,#0a0e1a 100%)'},
+  field:  {name:'星野', bg:'radial-gradient(ellipse at center,#0f172a 0%,#1e1b4b 50%,#0a0e1a 100%)'}
+};
+
+// ========== 对话数据 ==========
+const DIALOGUES = {
+  pro_001:{speaker:'narrator', text:'你在这条路上走了多久了？\n天色暗下来了。但你记得出发时明明是正午。', scene:'forest', next:'pro_002'},
+  pro_002:{speaker:'narrator', text:'前方出现了一座村庄。村口立着一块黑色的石碑，几个村民沉默地围聚在周围。\n没有人说话。没有人离开。', scene:'square', next:'pro_003'},
+  pro_003:{speaker:'narrator', text:'你抬起头——然后你看见了。\n星辰在移动。不是云层遮挡的那种移动——它们在游。像活物一样，在夜空中缓慢地改变位置。', scene:'field', next:'pro_004'},
+  pro_004:{speaker:'narrator', text:'一个披着旧斗篷的老人站在石碑旁。他的目光越过村民，落在你身上。\n仿佛他一直在等你。', scene:'shrine', next:'pro_005'},
+  pro_005:{speaker:'kael', text:'你来了。\n我等了六十年。准确地说——不是我，是这个位置等了你六十年。', scene:'shrine', next:'pro_006'},
+  pro_006:{speaker:'kael', text:'你看到那些星星了，对不对？它们在逃。因为有什么东西正在追它们。\n而你是唯一能让它们停下来的人。', scene:'field', next:'pro_007'},
+  pro_007:{speaker:'narrator', text:'他指了指村口那块黑色的石碑。上面没有文字，但你能感觉到——它在呼吸。', scene:'shrine', next:'pro_008'},
+  pro_008:{speaker:'kael', text:'触碰它。然后你就会明白一切。', scene:'shrine', choices:[
+    {text:'走上前触碰石碑', next:'pro_009a', effects:{touched_stone:true}},
+    {text:'后退一步：\"我需要知道更多\"', next:'pro_009b', effects:{asked_more:true}},
+    {text:'看着凯尔：\"你碰过吗？\"', next:'pro_009c', effects:{asked_kael:true, affection_kael:3}}
+  ]},
+  pro_009a:{speaker:'narrator', text:'你的指尖触到石碑的一瞬间，一道星光从碑面亮起，沿着你的手臂向上蔓延。\n你听到了什么——像是无数人的低语。', scene:'shrine', next:'pro_010'},
+  pro_009b:{speaker:'kael', text:'六十年前也有人像你一样站在这里。他问了太多问题。最后他走出了村庄，再也没有回来。\n但在那之前——他触碰了石碑。', scene:'shrine', next:'pro_010'},
+  pro_009c:{speaker:'kael', text:'碰过。\n（他沉默了很久）\n所以我活到了现在。但我没有走进石碑里面。而你——你可能需要走进去。', scene:'shrine', next:'pro_010'},
+  pro_010:{speaker:'narrator', text:'一阵风从碑面吹来，带着古老尘土的味道。你感觉到某种东西在石碑深处等待着。', scene:'shrine', next:'pro_011'},
+  pro_011:{speaker:'lyra', text:'别碰。', scene:'square', next:'pro_012'},
+  pro_012:{speaker:'narrator', text:'一个声音从人群中响起。你转身，看见一个披着深色斗篷的年轻女子。她的眼睛在夜色中微微发亮。', scene:'square', choices:[
+    {text:'问她为什么', next:'pro_012a', effects:{asked_lyra:true, affection_lyra:5}},
+    {text:'\"你是这里的村民？\"', next:'pro_012b', effects:{asked_village:true}},
+    {text:'等她说下去', next:'pro_012c'}
+  ]},
+  pro_012a:{speaker:'lyra', text:'他们告诉你你是\"被选中\"的那个人，对不对？\n上一个被选中的人是你祖父。他走进石碑后，再也没有出来。', scene:'square', next:'pro_013'},
+  pro_012b:{speaker:'lyra', text:'我三年前走到这个村口，然后折返了。\n但我一直在附近。我知道一些他们不会告诉你的事。', scene:'square', next:'pro_013'},
+  pro_012c:{speaker:'lyra', text:'（她看了一眼石碑）我给你三个字：别进去。\n剩下的你自己决定。', scene:'square', next:'pro_013'},
+  pro_013:{speaker:'narrator', text:'凯尔在一旁沉默不语。莉拉的出现让他脸上掠过一丝复杂的表情。\n你在村庄的第一个夜晚，就这样开始了。', scene:'square', next:'pro_014'},
+  pro_014:{speaker:'narrator', text:'夜深了。你在村中徘徊。三个人的身影在夜色中格外清晰。', scene:'square', choices:[
+    {text:'走向石碑旁的凯尔', next:'pro_014a', effects:{talk_kael:true, affection_kael:2}},
+    {text:'跟上离开的莉拉', next:'pro_014b', effects:{talk_lyra:true, affection_lyra:3}},
+    {text:'找铁匠马库斯聊聊', next:'pro_014c', effects:{talk_marcus:true, affection_marcus:2}}
+  ]},
+  pro_014a:{speaker:'kael', text:'你还没走？\n也对，没人能在这时候睡着。', scene:'shrine', next:'pro_015'},
+  pro_014b:{speaker:'lyra', text:'你跟过来了。\n（她没回头，但脚步慢了下来）你在想我说的话。', scene:'tree', next:'pro_015'},
+  pro_014c:{speaker:'marcus', text:'（铁锤声停了下来）你不是来打铁的。也对，这个点了。\n你是来问那个石碑的事吧。', scene:'square', next:'pro_015'},
+  pro_015:{speaker:'narrator', text:'夜空中有一颗星星突然暗了下去。然后又一颗。\n像是有人在远处一盏一盏地关灯。', scene:'field', next:'pro_016'},
+  pro_016:{speaker:'lyra', text:'你看到了吗？它们正在熄灭。\n每熄灭一颗，这个世界就会失去一样东西。\n先是颜色，然后是记忆，最后是——', scene:'field', next:'pro_017'},
+  pro_017:{speaker:'narrator', text:'她没有说完。但你已经明白了。\n你必须在天亮之前做出选择。', scene:'field', next:'pro_018'},
+  pro_018:{speaker:'narrator', text:'三个声音在你脑海中回响：\n凯尔说这是宿命，你必须走进石碑。\n莉拉说这是陷阱，你必须离开。\n马库斯说——他只说了两个字：\"你自己。\"', scene:'field', next:'pro_019'},
+  pro_019:{speaker:'narrator', text:'黎明前的星野，风停了。整个村庄都在等你的一句话。', scene:'field', choices:[
+    {text:'走向石碑——接受宿命', next:'pro_019a', effects:{choose_stone:true}},
+    {text:'走向村口——相信莉拉', next:'pro_019b', effects:{choose_leave:true}},
+    {text:'站在原地——听自己的', next:'pro_019c', effects:{choose_self:true}},
+    {text:'问三人还有没有别的路', next:'pro_019d', effects:{choose_ask:true, affection_lyra:2, affection_kael:2, affection_marcus:2}}
+  ]},
+  pro_019a:{speaker:'narrator', text:'你走向石碑。凯尔点了点头，眼中带着说不清的复杂。\n你的手碰上了石碑的表面——这一次，它没有发光。\n它只是……打开了。', scene:'shrine', next:'pro_020'},
+  pro_019b:{speaker:'narrator', text:'你转身走向村口。莉拉跟了上来，步伐很轻。\n但就在你踏出村口的那一刻，你回头看了一眼——\n整座村庄正在褪色。', scene:'forest', next:'pro_020'},
+  pro_019c:{speaker:'narrator', text:'你谁也没选。\n你只是站着。\n然后你发现——那三个人的目光同时移开了。像是他们早就知道你会这么做。', scene:'field', next:'pro_020'},
+  pro_019d:{speaker:'kael', text:'（三人对视了一眼）\n有。但是那条路——没有人走过。', scene:'field', next:'pro_020'},
+  pro_020:{speaker:'narrator', text:'天色将明。\n你的故事，才刚刚开始……', scene:'field', next:'ch1_001'},
+
+  // ====== 第一章 ======
+  ch1_001:{speaker:'narrator', text:'第二天，阳光没有如约而至。\n天空变成了深紫色，星辰在白昼中依然可见。', scene:'square', next:'ch1_002'},
+  ch1_002:{speaker:'kael', text:'比预期来得更快。我们需要在日落之前做出决定。\n石碑内部——或者什么都没有。', scene:'shrine', next:'ch1_003'},
+  ch1_003:{speaker:'lyra', text:'不对。你们漏了一个地方。', scene:'square', next:'ch1_004'},
+  ch1_004:{speaker:'lyra', text:'星语内殿。那是一座建在裂缝上的神殿。\n很久以前，选择者不是走进石碑——而是走进那里。', scene:'tower', next:'ch1_005'},
+  ch1_005:{speaker:'narrator', text:'三个方向摆在你面前。每一个都对应着一种命运的可能性。', scene:'field', choices:[
+    {text:'和凯尔一起走进石碑', next:'ch1_006a', effects:{path_stone:true}},
+    {text:'和莉拉一起去星语内殿', next:'ch1_006b', effects:{path_temple:true}},
+    {text:'和马库斯去村外寻找证据', next:'ch1_006c', effects:{path_truth:true}}
+  ]},
+  ch1_006a:{speaker:'kael', text:'好。带上这个——这是上一任选择者留下的笔记。\n你会需要它。', scene:'shrine', next:'ch1_007'},
+  ch1_006b:{speaker:'lyra', text:'（她微微一笑）你做出了我没想到的选择。\n走吧——路有点远。', scene:'tower', next:'ch1_007'},
+  ch1_006c:{speaker:'marcus', text:'嗯。跟我来。\n我从十五岁就开始挖地道了——不是为了逃，是为了知道下面有什么。', scene:'square', next:'ch1_007'},
+  ch1_007:{speaker:'narrator', text:'你选择的道路将决定星落的结局。', scene:'field', next:'ch1_008'},
+  ch1_008:{speaker:'narrator', text:'（第一章剧情继续展开……）\n故事还在继续，后面的章节正在星空中编织。', scene:'field', next:'end_001'},
+
+  // ====== 结局 ======
+  end_001:{speaker:'narrator', text:'星辰在你的注视下停止了移动。\n不是因为你征服了它们——而是因为它们选择了你。', scene:'field'},
+  end_002:{speaker:'kael', text:'六十年前那个人走出去时也带着同样的表情。\n你比任何人都准备好了。', scene:'shrine', next:'end_003'},
+  end_003:{speaker:'lyra', text:'（她站在远处，风吹起她的斗篷）\n不管你选择了什么——记住：是你选的。不是星星。不是石碑。不是我们。', scene:'field', next:'end_004'},
+  end_004:{speaker:'narrator', text:'天边的第一缕光穿透了紫色的云层。\n星落之夜——结束了。\n但真正有意义的是，你在星空下做出的那个选择。', scene:'field'},
+};
+
+// ========== 游戏引擎 ==========
+let currentId = null;
+let flags = {};
+let choicesResult = null;
+
+function getChar(id){return CHARS[id]||null}
+
+function getNext(id) {
+  const n = DIALOGUES[id];
+  if (!n) return null;
+  // 有choices则停止，等待玩家选择
+  if (n.choices) return null;
+  if (n.next) return n.next;
+  return null;
+}
+
+function showNode(id) {
+  const n = DIALOGUES[id];
+  if (!n) { endGame(); return; }
+  currentId = id;
+  
+  // 场景切换
+  if (n.scene && SCENES[n.scene]) {
+    const s = SCENES[n.scene];
+    const bg = document.getElementById('bg');
+    if (bg.style.background !== s.bg) {
+      document.getElementById('bg-overlay').style.opacity = '1';
+      setTimeout(() => {
+        bg.style.background = s.bg;
+        document.getElementById('bg-overlay').style.opacity = '0';
+      }, 300);
+    }
+    document.getElementById('hud-chapter').textContent = 
+      (id.startsWith('pro')?'序幕':id.startsWith('ch1')?'第一章':id.startsWith('end')?'结局':'') + 
+      ' · ' + s.name;
+    refreshAffections();
+  }
+
+  // 说话者
+  const char = getChar(n.speaker);
+  const avatar = document.getElementById('dialog-avatar');
+  const name = document.getElementById('dialog-name');
+  const text = document.getElementById('dialog-text');
+  const speaker = document.getElementById('dialog-speaker');
+  
+  if (char) {
+    speaker.style.display = 'flex';
+    avatar.textContent = char.emoji || '✨';
+    avatar.style.background = char.color ? char.color + '22' : 'rgba(129,140,248,0.15)';
+    avatar.style.borderColor = char.color ? char.color + '44' : 'rgba(129,140,248,0.25)';
+    name.textContent = char.name || n.speaker;
+    name.style.color = char.color || '#a5b4fc';
+    text.classList.remove('center','italic');
+  } else {
+    speaker.style.display = 'none';
+    text.classList.add('center');
+    text.classList.remove('italic');
+  }
+
+  // 打字机效果
+  typeText(text, n.text || '', () => {
+    // 打字完成
+    if (n.choices) {
+      showChoices(n.choices);
+    } else if (n.next) {
+      document.getElementById('dialog-indicator').textContent = '▼ 点击继续';
+      document.getElementById('dialog-indicator').style.color = '#a5b4fc';
+    }
+  });
+}
+
+let typeTimer = null;
+function typeText(el, fullText, onDone) {
+  if (typeTimer) clearInterval(typeTimer);
+  el.textContent = '';
+  let idx = 0;
+  const speed = 40;
+  document.getElementById('dialog-indicator').textContent = '▍ 讲述中...';
+  document.getElementById('dialog-indicator').style.color = '#94a3b8';
+  
+  function tick() {
+    if (idx < fullText.length) {
+      el.textContent = fullText.slice(0, idx + 1);
+      idx++;
+      // 标点符号多停一会儿
+      const delay = '，。！？；\n'.includes(fullText[idx]) ? speed * 3 : speed;
+      typeTimer = setTimeout(tick, delay);
+    } else {
+      el.textContent = fullText;
+      if (typeTimer) clearInterval(typeTimer);
+      typeTimer = null;
+      if (onDone) onDone();
+    }
+  }
+  typeTimer = setTimeout(tick, speed);
+}
+
+function skipTyping() {
+  const n = DIALOGUES[currentId];
+  if (!n) return;
+  if (typeTimer) {
+    clearInterval(typeTimer);
+    typeTimer = null;
+  }
+  document.getElementById('dialog-text').textContent = n.text || '';
+  document.getElementById('dialog-indicator').textContent = '▼ 点击继续';
+  document.getElementById('dialog-indicator').style.color = '#a5b4fc';
+  if (n.choices) showChoices(n.choices);
+}
+
+function showChoices(choices) {
+  const container = document.getElementById('choices-inner');
+  container.innerHTML = '';
+  choices.forEach((c, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'choice-btn';
+    btn.innerHTML = '<span class="star">✦</span> ' + c.text;
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // 应用效果
+      if (c.effects) {
+        Object.keys(c.effects).forEach(k => {
+          if (k.startsWith('affection_')) {
+            const cid = k.replace('affection_', '');
+            flags['aff_' + cid] = (flags['aff_' + cid] || 0) + c.effects[k];
+          } else {
+            flags[k] = c.effects[k];
+          }
+        });
+        refreshAffections();
+      }
+      document.getElementById('choices').classList.remove('show');
+      if (c.next) showNode(c.next);
+    });
+    container.appendChild(btn);
+  });
+  document.getElementById('choices').classList.add('show');
+  document.getElementById('dialog-indicator').textContent = '';
+}
+
+function refreshAffections() {
+  const container = document.getElementById('hud-affections');
+  container.innerHTML = '';
+  const chars = [
+    {id:'kael',emoji:'🧙',color:'#f59e0b'},
+    {id:'lyra',emoji:'🏹',color:'#6366f1'},
+    {id:'marcus',emoji:'🗡️',color:'#475569'}
+  ];
+  chars.forEach(c => {
+    const val = flags['aff_' + c.id] || 0;
+    const div = document.createElement('span');
+    div.className = 'hud-aff' + (val > 0 ? ' show' : '');
+    const dotColor = val >= 10 ? '#22c55e' : val >= 5 ? '#a5b4fc' : val > 0 ? c.color : '#475569';
+    div.innerHTML = `<span class="hud-aff-dot" style="background:${dotColor}"></span>${c.emoji} ${val}`;
+    container.appendChild(div);
+  });
+}
+
+// 存档
+function saveGame(slot) {
+  const data = {
+    nodeId: currentId,
+    flags: JSON.parse(JSON.stringify(flags)),
+    time: Date.now(),
+    chapter: currentId?.startsWith('pro')?'序幕':currentId?.startsWith('ch1')?'第一章':'',
+    preview: DIALOGUES[currentId]?.text?.slice(0,20) || ''
+  };
+  const saves = JSON.parse(localStorage.getItem('starnight_saves') || '{}');
+  saves['slot_' + slot] = data;
+  localStorage.setItem('starnight_saves', JSON.stringify(saves));
+  refreshMenu();
+}
+
+function loadGame(slot) {
+  const saves = JSON.parse(localStorage.getItem('starnight_saves') || '{}');
+  const data = saves['slot_' + slot];
+  if (!data) return;
+  flags = data.flags || {};
+  document.getElementById('menu-panel').classList.remove('show');
+  showNode(data.nodeId);
+  document.getElementById('title').classList.add('hide');
+  document.getElementById('title').classList.add('removed');
+  document.getElementById('hud').classList.add('show');
+  document.getElementById('menu-btn').classList.add('show');
+}
+
+function getSaves() {
+  return JSON.parse(localStorage.getItem('starnight_saves') || '{}');
+}
+
+// 菜单
+function toggleMenu() {
+  const panel = document.getElementById('menu-panel');
+  panel.classList.toggle('show');
+  if (panel.classList.contains('show')) refreshMenu();
+}
+
+function refreshMenu() {
+  const box = document.getElementById('menu-box');
+  box.innerHTML = '<h3>菜单</h3>';
+  // 继续游戏
+  const cont = document.createElement('button');
+  cont.className = 'menu-item'; cont.textContent = '▶ 继续游戏';
+  cont.addEventListener('click', () => document.getElementById('menu-panel').classList.remove('show'));
+  box.appendChild(cont);
+
+  box.innerHTML += '<div style="color:#64748b;font-size:13px;margin:12px 0 6px;letter-spacing:1px">存档</div>';
+  for (let i = 1; i <= 3; i++) {
+    const saves = getSaves();
+    const d = saves['slot_' + i];
+    const slot = document.createElement('button');
+    slot.className = 'save-slot';
+    if (d) {
+      const t = new Date(d.time);
+      slot.innerHTML = `槽位 ${i} <span class="time">${t.getMonth()+1}/${t.getDate()} ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}</span><span class="preview">${d.chapter||''} · ${d.preview||''}</span>`;
+      slot.addEventListener('click', () => loadGame(i));
+    } else {
+      slot.innerHTML = `槽位 ${i} <span class="time">空</span>`;
+      slot.addEventListener('click', () => saveGame(i));
+    }
+    box.appendChild(slot);
+  }
+  // 自动存档
+  const saves = getSaves();
+  if (saves['auto']) {
+    const d = saves['auto'];
+    const t = new Date(d.time);
+    const slot = document.createElement('button');
+    slot.className = 'save-slot';
+    slot.innerHTML = `自动存档 <span class="time">${t.getMonth()+1}/${t.getDate()} ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}</span><span class="preview">${d.chapter||''} · ${d.preview||''}</span>`;
+    slot.addEventListener('click', () => loadGame('auto'));
+    box.appendChild(slot);
+  }
+
+  const ret = document.createElement('button');
+  ret.className = 'menu-item'; ret.textContent = '⌂ 返回标题';
+  ret.style.marginTop = '12px';
+  ret.addEventListener('click', () => {
+    document.getElementById('menu-panel').classList.remove('show');
+    document.getElementById('hud').classList.remove('show');
+    document.getElementById('menu-btn').classList.remove('show');
+    document.getElementById('dialog').classList.remove('show');
+    document.getElementById('choices').classList.remove('show');
+    document.getElementById('ending').classList.remove('show');
+    document.getElementById('title').classList.remove('hide');
+  });
+  box.appendChild(ret);
+}
+
+// 结局
+function endGame() {
+  document.getElementById('dialog').classList.remove('show');
+  document.getElementById('choices').classList.remove('show');
+  document.getElementById('menu-btn').classList.remove('show');
+  document.getElementById('hud').classList.remove('show');
+  const ending = document.getElementById('ending');
+  ending.classList.add('show');
+  const hasChosen = flags.choose_stone || flags.choose_leave || flags.choose_self || flags.choose_ask;
+  if (hasChosen) {
+    document.querySelector('#ending h2').textContent = '星河永驻';
+    document.querySelector('#ending p').textContent = '你在星落之夜做出的选择，将会在星辰之间流传很久。\n不是每一个走进星落村的人都能找到自己的答案——\n但你找到了。';
+  } else {
+    document.querySelector('#ending h2').textContent = '星落归尘';
+    document.querySelector('#ending p').textContent = '星辰依旧在移动。也许它们会再等六十年。\n也许不会。\n但你已经不再是被选中的人了。';
+  }
+}
+
+// 开始游戏
+function startGame() {
+  flags = {};
+  document.getElementById('title').classList.add('hide');
+  document.getElementById('title').classList.add('removed');
+  document.getElementById('hud').classList.add('show');
+  document.getElementById('menu-btn').classList.add('show');
+  document.getElementById('dialog').classList.add('show');
+  showNode('pro_001');
+  // 自动存档
+  setTimeout(() => {
+    const saves = JSON.parse(localStorage.getItem('starnight_saves') || '{}');
+    saves['auto'] = {nodeId:currentId, flags:{}, time:Date.now(), chapter:'序幕', preview:''};
+    localStorage.setItem('starnight_saves', JSON.stringify(saves));
+  }, 1000);
+}
+
+// ========== 事件绑定 ==========
+
+// 标题点击 → 开始
+document.getElementById('title').addEventListener('click', startGame);
+document.getElementById('title').addEventListener('touchstart', (e) => { e.preventDefault(); startGame(); });
+
+// 对话框点击 → 推进
+document.getElementById('dialog-inner').addEventListener('click', () => {
+  if (typeTimer) {
+    skipTyping();
+    return;
+  }
+  const n = DIALOGUES[currentId];
+  if (!n) return;
+  if (n.choices) {
+    showChoices(n.choices);
+    return;
+  }
+  if (n.next) {
+    showNode(n.next);
+    // 自动存档
+    const saves = JSON.parse(localStorage.getItem('starnight_saves') || '{}');
+    saves['auto'] = {nodeId:n.next, flags:JSON.parse(JSON.stringify(flags)), time:Date.now(), chapter:currentId?.startsWith('pro')?'序幕':currentId?.startsWith('ch1')?'第一章':'', preview:DIALOGUES[n.next]?.text?.slice(0,20)||''};
+    localStorage.setItem('starnight_saves', JSON.stringify(saves));
+  }
+});
+
+// 菜单
+document.getElementById('menu-btn').addEventListener('click', toggleMenu);
+document.getElementById('menu-overlay').addEventListener('click', () => document.getElementById('menu-panel').classList.remove('show'));
+
+// 返回标题
+document.querySelector('#ending .btn').addEventListener('click', () => {
+  document.getElementById('ending').classList.remove('show');
+  document.getElementById('title').classList.remove('hide');
+  document.getElementById('dialog').classList.remove('show');
+});
+
+// 加载
+window.addEventListener('load', () => {
+  document.getElementById('loader').classList.add('hide');
+  // 检查是否有自动存档
+  const saves = getSaves();
+  if (saves['auto']) {
+    // 显示标题，不强制读档
+  }
+});
+</script>
+</body>
+</html>

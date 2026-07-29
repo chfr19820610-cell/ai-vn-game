@@ -1,0 +1,1339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=800">
+<title>星落之夜 · 序幕 — v2 Story</title>
+<!-- Noto Sans SC for Chinese rendering -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a1a;
+    display: flex; justify-content: center; align-items: center;
+    height: 100vh; overflow: hidden;
+    font-family: 'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif;
+  }
+  #game-wrapper {
+    position: relative;
+    width: 800px; height: 600px;
+  }
+  canvas { display: block; border-radius: 8px; }
+  #overlay {
+    position: absolute;
+    top: 0; left: 0;
+    width: 800px; height: 600px;
+    pointer-events: none;
+    z-index: 10;
+  }
+  #overlay .ov-text {
+    position: absolute;
+    white-space: pre-wrap;
+    line-height: 1.35;
+    pointer-events: auto;
+    user-select: none;
+  }
+  #overlay .ov-center { transform: translate(-50%, -50%); }
+  #overlay .ov-speaker { font-weight: 700; }
+  #overlay .ov-choice {
+    padding: 4px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    pointer-events: auto;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #overlay .ov-title { font-weight: 700; text-shadow: 0 0 8px rgba(200,180,100,0.5); }
+</style>
+</head>
+<body>
+<div id="game-wrapper">
+  <!-- Kaboom canvas inserted here -->
+  <div id="overlay"></div>
+</div>
+<script src="https://unpkg.com/kaboom@2000.2.1/dist/kaboom.js"></script>
+<script>
+kaboom({ global: true, width: 800, height: 600, background: [15,15,35] });
+
+// Fix: move canvas into #game-wrapper so overlay and canvas share the same positioned parent
+// Kaboom appends canvas to <body> by default, which causes overlay drift in flex layouts
+(function() {
+  var canvas = document.querySelector('canvas');
+  var wrapper = document.getElementById('game-wrapper');
+  if (canvas && wrapper) {
+    wrapper.insertBefore(canvas, wrapper.firstChild);
+    console.log('[fix] canvas moved into #game-wrapper');
+  }
+})();
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DOM OVERLAY SYSTEM — for Chinese text rendering
+// Kaboom v2000 bitmap fonts don't support CJK, so we use DOM overlay
+// ═══════════════════════════════════════════════════════════════════════════
+var overlay = document.getElementById('overlay');
+var _ovEls = {}; // id → DOM element
+
+function ovEl(id) {
+  if (!_ovEls[id]) {
+    var el = document.createElement('div');
+    el.className = 'ov-text';
+    el.id = 'ov-' + id;
+    overlay.appendChild(el);
+    _ovEls[id] = el;
+  }
+  return _ovEls[id];
+}
+
+function ovSet(id, x, y, html, size, color, opts) {
+  var el = ovEl(id);
+  el.style.left = x + 'px';
+  el.style.top = y + 'px';
+  el.style.fontSize = (size || 16) + 'px';
+  el.style.color = color || '#fff';
+  el.innerHTML = html;
+  if (opts && opts.center) el.classList.add('ov-center');
+  else el.classList.remove('ov-center');
+  if (opts && opts.speaker) el.classList.add('ov-speaker');
+  else el.classList.remove('ov-speaker');
+  if (opts && opts.title) el.classList.add('ov-title');
+  else el.classList.remove('ov-title');
+  if (opts && opts.width) el.style.width = opts.width + 'px';
+  el.style.display = '';
+  el.style.opacity = (opts && opts.opacity !== undefined) ? opts.opacity : '1';
+  return el;
+}
+
+function ovHide(id) {
+  var el = _ovEls[id];
+  if (el) el.style.display = 'none';
+}
+
+function ovDestroy(id) {
+  var el = _ovEls[id];
+  if (el) { el.remove(); delete _ovEls[id]; }
+  // Also destroy Kaboom game object if exists
+  var go = _ovGo[id];
+  if (go) { destroy(go); delete _ovGo[id]; }
+}
+
+function ovHtml(id, html) {
+  var el = _ovEls[id];
+  if (el) el.innerHTML = html;
+}
+
+function ovOpacity(id, val) {
+  var el = _ovEls[id];
+  if (el) el.style.opacity = val;
+}
+
+// Kaboom game objects associated with overlay elements (so we can use Kaboom area/onClick)
+var _ovGo = {};
+
+function ovRect(id, x, y, w, h, color, opts) {
+  var go = add([
+    rect(w, h, { radius: (opts && opts.radius) || 0 }),
+    color.apply(null, color),
+    pos(x, y),
+    area(),
+    opacity((opts && opts.opacity !== undefined) ? opts.opacity : 1),
+    outline((opts && opts.outline) || 0, (opts && opts.outlineColor) || rgb(0,0,0)),
+    id
+  ]);
+  _ovGo[id] = go;
+  return go;
+}
+
+// Convenience: create both a Kaboom rect and overlay text for a choice button
+function ovChoice(id, x, y, w, html, size, textColor, bgColor, outlineColor) {
+  // Kaboom rect for hit detection
+  ovRect('choice-rect-' + id, x, y, w, 42, bgColor || [50,60,100], { radius: 8, outline: 2, outlineColor: outlineColor || rgb(150,180,255) });
+  // DOM text overlay
+  var el = ovSet(id, x + 10, y + 10, html, size || 14, textColor || '#fff');
+  el.classList.add('ov-choice');
+  el.style.width = (w - 20) + 'px';
+  el.style.height = '28px';
+  el.style.lineHeight = '28px';
+  return el;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Playwright Click Compatibility Fix
+// ═══════════════════════════════════════════════════════════════════════════
+(function() {
+  var canvas = document.querySelector('canvas');
+  if (!canvas) return;
+  console.log('[v2-story] canvas found, installing click shim');
+
+  function synthMouse(type, src) {
+    return new MouseEvent(type, {
+      button: src.button, buttons: src.buttons,
+      clientX: src.clientX, clientY: src.clientY,
+      offsetX: src.offsetX, offsetY: src.offsetY,
+      screenX: src.screenX, screenY: src.screenY,
+      movementX: 0, movementY: 0,
+      bubbles: true, cancelable: true
+    });
+  }
+
+  canvas.addEventListener('mousedown', function(e) {
+    canvas.dispatchEvent(synthMouse('mousemove', e));
+  }, true);
+
+  canvas.addEventListener('pointerdown', function(e) {
+    canvas.dispatchEvent(new PointerEvent('pointermove', {
+      pointerId: e.pointerId, pointerType: e.pointerType,
+      clientX: e.clientX, clientY: e.clientY,
+      bubbles: true, cancelable: true
+    }));
+  }, true);
+
+  canvas.addEventListener('mouseup', function(e) {
+    var pressed = (typeof isMousePressed === 'function') && isMousePressed();
+    if (pressed) {
+      e.stopImmediatePropagation();
+      requestAnimationFrame(function() {
+        canvas.dispatchEvent(synthMouse('mouseup', e));
+      });
+    }
+  }, true);
+
+  canvas.addEventListener('pointerup', function(e) {
+    var pressed = (typeof isMousePressed === 'function') && isMousePressed();
+    if (pressed) {
+      e.stopImmediatePropagation();
+      requestAnimationFrame(function() {
+        canvas.dispatchEvent(new PointerEvent('pointerup', {
+          pointerId: e.pointerId, pointerType: e.pointerType,
+          clientX: e.clientX, clientY: e.clientY,
+          button: e.button, buttons: e.buttons,
+          bubbles: true, cancelable: true
+        }));
+      });
+    }
+  }, true);
+
+  console.log('[v2-story] click shim installed');
+})();
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Programmatic Helpers (for Playwright/testing)
+// ═══════════════════════════════════════════════════════════════════════════
+window.__clickNpc = function(idx) {
+  if (state.typing) return false;
+  if (state.done[idx]) return false;
+  if (state.activeNpc !== null && state.activeNpc !== idx) return false;
+  if (!state.npcUnlocked[idx]) return false;
+  console.log('[__clickNpc] triggering npc ' + idx);
+  startNpcConversation(idx);
+  return true;
+};
+window.__clickChoice = function(n) {
+  if (!state.showChoices || state.typing) return false;
+  var idx = state.activeNpc;
+  if (idx === null) return false;
+  var choices = currentChoices();
+  if (!choices || n >= choices.length) return false;
+  console.log('[__clickChoice] selecting choice ' + n + ' for npc ' + idx);
+  selectChoice(idx, n);
+  return true;
+};
+window.__gameState = null; // set after state init
+window.__gameVars = null;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// VARIABLE SYSTEM — mirrors game-data.js VARIABLES + checkCondition/applyEffects
+// ═══════════════════════════════════════════════════════════════════════════
+
+var vars = {
+  // Player state
+  origin: "",
+  weapon: "",
+  weapon_desc: "",
+  has_shrine_mark: false,
+  has_special_weapon: false,
+  has_lantern: false,
+  heading_to_square: false,
+  ready_to_depart: false,
+
+  // Affection
+  affection_lyra: 0,
+  affection_elder: 0,
+  affection_marcus: 0,
+
+  // Narrative
+  narrative_tension: 0,
+  quest: "none",
+  objective: "",
+  lyra_will_accompany: false,
+  shadow_has_advantage: false,
+  kael_trusts_player: false,
+
+  // NPC branch flags
+  lyra_shared_origin: false,
+  lyra_doubted_player: false,
+  lyra_observing_player: false,
+  lyra_admitted_past: false,
+  kael_gave_warning: false,
+  kael_explained_history: false,
+  kael_told_cautionary_tale: false,
+  marcus_shared_sword_lore: false,
+  marcus_shared_shield_lore: false,
+  marcus_gave_charm: false,
+  marcus_warning_given: false,
+
+  // Meta
+  met_lyra: false,
+  met_elder: false,
+  met_marcus: false,
+  knows_shrine_lore: false,
+  knows_betrayal_details: false,
+  refused_but_marked: false,
+  next_destination: ""
+};
+
+window.__gameVars = vars;
+
+function checkCondition(cond) {
+  if (!cond) return true;
+  if (cond.op === "and") return (cond.conds || []).every(function(c) { return checkCondition(c); });
+  if (cond.op === "or")  return (cond.conds || []).some(function(c) { return checkCondition(c); });
+  if (cond.op === "not") return !checkCondition(cond.cond);
+
+  var val = vars[cond.var];
+  switch (cond.op) {
+    case "==": return val === cond.value;
+    case "!=": return val !== cond.value;
+    case ">":  return Number(val) >  Number(cond.value);
+    case "<":  return Number(val) <  Number(cond.value);
+    case ">=": return Number(val) >= Number(cond.value);
+    case "<=": return Number(val) <= Number(cond.value);
+    default:   return false;
+  }
+}
+
+function applyEffects(effects) {
+  if (!effects || !Array.isArray(effects)) return;
+  for (var i = 0; i < effects.length; i++) {
+    var eff = effects[i];
+    if (!eff || !eff.var) continue;
+    switch (eff.action) {
+      case "set":
+        vars[eff.var] = eff.value;
+        break;
+      case "add":
+        vars[eff.var] = (typeof vars[eff.var] === "number" ? vars[eff.var] : 0) + (Number(eff.value) || 0);
+        break;
+      case "toggle":
+        vars[eff.var] = !vars[eff.var];
+        break;
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INVENTORY SYSTEM (背包系统)
+// ═══════════════════════════════════════════════════════════════════════════
+var inventory = [];
+var _inventoryOpen = false;
+var _inventoryPanel = null;
+var _inventoryItems = [];
+
+function addToInventory(item) {
+  // Check for duplicates
+  for (var i = 0; i < inventory.length; i++) {
+    if (inventory[i].id === item.id) return;
+  }
+  inventory.push(item);
+  console.log('[背包] 获得: ' + item.name + ' — ' + item.desc);
+  // Flash inventory button
+  if (window._invBtnBg) {
+    window._invBtnBg.color = rgb(100, 255, 100);
+    setTimeout(function() { if (window._invBtnBg) window._invBtnBg.color = rgb(60, 60, 80); }, 800);
+  }
+  // Show toast
+  showToast('👜 获得物品: ' + item.name);
+}
+
+function toggleInventory() {
+  if (_inventoryOpen) { closeInventory(); }
+  else { openInventory(); }
+}
+
+function openInventory() {
+  if (_inventoryOpen) return;
+  _inventoryOpen = true;
+  closeJournal(); // close journal if open
+
+  _inventoryPanel = add([
+    rect(340, 320, { radius: 12 }),
+    color(15, 15, 30),
+    opacity(0.95),
+    pos(width()/2 - 170, 140),
+    outline(2, rgb(180, 160, 100)),
+    "inventory-panel"
+  ]);
+  ovSet('inv-title', width()/2 - 150, 155, '🎒 背包', 20, 'rgb(255,215,100)');
+  ovSet('inv-close', width()/2 + 60, 159, '按 I 关闭', 11, 'rgb(140,140,160)');
+
+  if (inventory.length === 0) {
+    ovSet('inv-empty', width()/2 - 130, 240, '（空 — 与他人对话获取物品）', 14, 'rgb(140,140,160)');
+  } else {
+    ovHide('inv-empty');
+    for (var i = 0; i < inventory.length; i++) {
+      var item = inventory[i];
+      var iy = 195 + i * 58;
+      ovSet('inv-item-name-' + i, width()/2 - 150, iy, item.icon + ' ' + item.name, 15, '#fff');
+      ovSet('inv-item-desc-' + i, width()/2 - 150, iy + 20, item.desc, 11, 'rgb(160,160,180)');
+      if (item.source) {
+        ovSet('inv-item-src-' + i, width()/2 - 150, iy + 36, '来源: ' + item.source, 10, 'rgb(120,120,140)');
+      }
+    }
+  }
+}
+
+function closeInventory() {
+  _inventoryOpen = false;
+  destroyAll('inventory-panel');
+  _inventoryPanel = null;
+  ovDestroy('inv-title'); ovDestroy('inv-close'); ovDestroy('inv-empty');
+  for (var i = 0; i < 10; i++) {
+    ovDestroy('inv-item-name-' + i);
+    ovDestroy('inv-item-desc-' + i);
+    ovDestroy('inv-item-src-' + i);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// QUEST JOURNAL (任务日志)
+// ═══════════════════════════════════════════════════════════════════════════
+var journal = [];
+var _journalOpen = false;
+
+function addToJournal(entry) {
+  journal.push(entry);
+  console.log('[日志] ' + entry.title);
+  if (window._jrnBtnBg) {
+    window._jrnBtnBg.color = rgb(100, 200, 255);
+    setTimeout(function() { if (window._jrnBtnBg) window._jrnBtnBg.color = rgb(60, 60, 80); }, 800);
+  }
+}
+
+function toggleJournal() {
+  if (_journalOpen) { closeJournal(); }
+  else { openJournal(); }
+}
+
+function openJournal() {
+  if (_journalOpen) return;
+  _journalOpen = true;
+  closeInventory();
+
+  add([rect(460, 360, { radius: 12 }), color(15, 15, 30), opacity(0.95), pos(width()/2 - 230, 120), outline(2, rgb(100, 180, 255)), "journal-panel"]);
+  ovSet('jrn-title', width()/2 - 210, 135, '📜 任务日志', 20, 'rgb(140,200,255)');
+  ovSet('jrn-close', width()/2 + 120, 139, '按 J 关闭', 11, 'rgb(140,140,160)');
+
+  if (journal.length === 0) {
+    ovSet('jrn-empty', width()/2 - 210, 220, '（暂无记录 — 完成对话后自动记录）', 14, 'rgb(140,140,160)');
+  } else {
+    ovHide('jrn-empty');
+    for (var i = 0; i < journal.length; i++) {
+      var entry = journal[i];
+      var jy = 175 + i * 65;
+      var statusIcon = entry.done ? '✅' : '📌';
+      ovSet('jrn-entry-title-' + i, width()/2 - 210, jy, statusIcon + ' ' + entry.title, 15, '#fff');
+      ovSet('jrn-entry-detail-' + i, width()/2 - 210, jy + 22, entry.detail, 11, 'rgb(160,180,200)');
+      ovSet('jrn-entry-time-' + i, width()/2 - 210, jy + 40, entry.time, 10, 'rgb(100,120,140)');
+    }
+  }
+}
+
+function closeJournal() {
+  _journalOpen = false;
+  destroyAll('journal-panel');
+  ovDestroy('jrn-title'); ovDestroy('jrn-close'); ovDestroy('jrn-empty');
+  for (var i = 0; i < 10; i++) {
+    ovDestroy('jrn-entry-title-' + i);
+    ovDestroy('jrn-entry-detail-' + i);
+    ovDestroy('jrn-entry-time-' + i);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TOAST / FLOATING TEXT (选择后果可视化)
+// ═══════════════════════════════════════════════════════════════════════════
+var _toastId = 0;
+function showToast(msg) {
+  _toastId++;
+  var tid = 'toast-' + _toastId;
+  ovSet(tid, width()/2, 350, msg, 15, 'rgb(255,255,100)', { center: true });
+  var el = _ovEls[tid];
+  var start = Date.now();
+  function animToast() {
+    var elapsed = (Date.now() - start) / 1000;
+    var y = 350 - elapsed * 18;
+    var opacity = Math.max(0, 1 - elapsed / 2.0);
+    el.style.top = y + 'px';
+    el.style.opacity = opacity;
+    if (elapsed > 2.0) { ovDestroy(tid); return; }
+    requestAnimationFrame(animToast);
+  }
+  requestAnimationFrame(animToast);
+}
+
+function showConsequence(npcName, effects) {
+  if (!effects || !effects.length) return;
+  var lines = [];
+  for (var i = 0; i < effects.length; i++) {
+    var e = effects[i];
+    if (e.var && e.var.indexOf('affection_') === 0) {
+      var val = Number(e.value) || 0;
+      if (val > 0) lines.push('❤️ ' + npcName + ' 好感 +' + val);
+      else if (val < 0) lines.push('💔 ' + npcName + ' 好感 ' + val);
+    }
+  }
+  if (lines.length > 0) {
+    for (var j = 0; j < lines.length; j++) {
+      (function(msg, delay) {
+        setTimeout(function() { showToast(msg); }, delay);
+      })(lines[j], j * 400);
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NPC DIALOGUE DATA — 3 scenes from game-data.js mapped to 3 NPCs
+// ═══════════════════════════════════════════════════════════════════════════
+
+var npcData = [
+  // ─────────────────────────────────────────────────────────────────
+  // NPC 0: 银发少女 莉拉 — scene_prologue (序章 · 醒来)
+  // ─────────────────────────────────────────────────────────────────
+  {
+    id: 0,
+    name: "莉拉",
+    title: "银发少女",
+    emoji: "🌙",
+    x: 150, y: 230,
+    color: [140, 200, 230],
+    // Rounds: array of round objects. Each round has lines[] and optional choices[]
+    rounds: [
+      // Round 0: Opening narration + Lyra intro → first choice
+      {
+        lines: [
+          { speaker: "narrator", text: "你从陌生的房间醒来。\n阳光透过木窗的缝隙洒在脸上，带着稻草和晨露的气息。\n窗外是一片你从未见过的紫色天空。\n\n头很沉。记忆像是被打碎的镜子——你能感觉到碎片的存在，却拼不出完整的画面。\n你记得自己的名字。但除此之外……一片空白。" },
+          { speaker: "narrator", text: "木门被轻轻推开。一个银发的少女站在门口，逆光中看不清表情。她手上端着一碗冒着热气的汤。" },
+          { speaker: "lyra", text: "你醒了。感觉怎么样？", effects: [{ action: "set", var: "met_lyra", value: true }] },
+          { speaker: "lyra", text: "你在森林边缘昏倒了。是村长把你抬回来的。已经睡了三天。" },
+          { speaker: "lyra", text: "她把汤放在你床边的木桌上，退后两步靠在门框上。似乎不打算靠近——但也没有离开的意思。\n\n「你的衣服是我换的。别多想——村里没有别人愿意碰一个满身是血的外来者。」" },
+          { speaker: "lyra", text: "你有很多问题吧。不过……先回答我一个问题：你来星落村，是偶然，还是有人在呼唤你？" }
+        ],
+        choices: [
+          {
+            text: "「我是听到了什么……在梦里。」",
+            effects: [
+              { action: "set", var: "origin", value: "called" },
+              { action: "add", var: "affection_lyra", value: 3 }
+            ],
+            nextRound: 1  // → called branch
+          },
+          {
+            text: "「只是偶然路过。我也不知道为什么。」",
+            effects: [
+              { action: "set", var: "origin", value: "accident" },
+              { action: "add", var: "affection_lyra", value: 1 }
+            ],
+            nextRound: 2  // → accident branch
+          },
+          {
+            text: "（沉默地盯着她，等待下文）",
+            effects: [
+              { action: "set", var: "origin", value: "silent" },
+              { action: "add", var: "affection_lyra", value: 2 }
+            ],
+            nextRound: 3  // → silent branch
+          }
+        ]
+      },
+      // Round 1: "called" branch
+      {
+        lines: [
+          { speaker: "lyra", text: "果然。她微微点头。和我一样。这座村子……它在找人。" },
+          { speaker: "lyra", text: "「三年前，我也听到了。在很远很远的地方——但那声音比任何东西都清晰。它说：'回来。'所以我来了。」", effects: [{ action: "set", var: "lyra_shared_origin", value: true }] }
+        ],
+        nextRound: 4  // → transition
+      },
+      // Round 2: "accident" branch
+      {
+        lines: [
+          { speaker: "lyra", text: "她看了你一眼，没有说话。但你知道——她不相信这个答案。" },
+          { speaker: "lyra", text: "她转过身去，声音里带着一丝不易察觉的失望。\n\n「没有谁是偶然来到这里的。星落村……它不在任何地图上。你找不到它——除非它想让你找到。」\n\n她顿了一下，补充道：「但如果你还没准备好承认……我理解。」", effects: [{ action: "set", var: "lyra_doubted_player", value: true }] }
+        ],
+        nextRound: 4
+      },
+      // Round 3: "silent" branch
+      {
+        lines: [
+          { speaker: "lyra", text: "她轻轻哼了一声。不回答也是一种回答。" },
+          { speaker: "lyra", text: "她抱起双臂，歪着头打量你。\n\n「沉默的人有两种：一种是什么都不知道，另一种是什么都知道了但不想说。你还站不稳——所以大概是第一种。」\n\n嘴角似乎动了一下。可能是个冷笑话。", effects: [{ action: "set", var: "lyra_observing_player", value: true }] }
+        ],
+        nextRound: 4
+      },
+      // Round 4: Transition to square
+      {
+        lines: [
+          { speaker: "lyra", text: "跟我来。村长在广场等你。记住——不要对他撒谎。他什么都看得出来。", effects: [{ action: "set", var: "heading_to_square", value: true }] }
+        ],
+        isFinal: true  // marks NPC as done, unlocks NPC 1
+      }
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // NPC 1: 村长 凯尔 — scene_village_square (村中广场)
+  // ─────────────────────────────────────────────────────────────────
+  {
+    id: 1,
+    name: "凯尔",
+    title: "村长",
+    emoji: "🧙",
+    x: 400, y: 230,
+    color: [200, 170, 110],
+    rounds: [
+      // Round 0: Square narration + Kael intro → first choice (accept quest)
+      {
+        lines: [
+          { speaker: "narrator", text: "广场中央有一棵巨大的古树，树冠几乎遮蔽了整个广场。\n树下站着一位白发老人，他正仰头望着树梢，仿佛在聆听什么。" },
+          { speaker: "elder_kael", text: "啊，你来了。他转过身，目光在你身上停留了片刻。我是凯尔。欢迎来到星落村，旅行者。", effects: [{ action: "set", var: "met_elder", value: true }] },
+          { speaker: "elder_kael", text: "通常不会有人误入这里。通往星落村的路……已经隐藏了很久。你身上，有神社的气息。" },
+          { speaker: "elder_kael", text: "他走近了几步，你能看清他脸上的皱纹——每一道都像是刻上去的年轮。他的眼睛很亮，不像一个老人该有的亮度。\n\n「这棵树，」他拍了拍古树的树干，「和我差不多老。它记得每一个来过这里的人。今天早上，它告诉我有人要来了。」" },
+          { speaker: "elder_kael", text: "但比你的来历更紧急的是——暗影正在扩散。东方森林里的神社，封印正在崩溃。我需要你的帮助。" }
+        ],
+        choices: [
+          {
+            text: "「告诉我详情。我能做什么？」",
+            effects: [
+              { action: "set", var: "quest", value: "accepted_eager" },
+              { action: "add", var: "affection_elder", value: 5 },
+              { action: "add", var: "affection_lyra", value: 2 }
+            ],
+            nextRound: 1
+          },
+          {
+            text: "「暗影？神社？你最好从头解释。」",
+            effects: [
+              { action: "set", var: "quest", value: "accepted_cautious" },
+              { action: "add", var: "affection_elder", value: 3 }
+            ],
+            nextRound: 2
+          },
+          {
+            text: "「我只是个过路人。这不关我的事。」",
+            effects: [
+              { action: "set", var: "quest", value: "refused_initial" },
+              { action: "add", var: "affection_lyra", value: -1 }
+            ],
+            nextRound: 3
+          }
+        ]
+      },
+      // Round 1: "eager" branch → lore follow-up
+      {
+        lines: [
+          { speaker: "elder_kael", text: "很好。凯尔眼中闪过一丝欣慰。六十年前，我们七个人加固了封印。现在……封印的每一道裂缝都在呼唤新的守护者。你就是其中之一。", effects: [{ action: "set", var: "kael_trusts_player", value: true }, { action: "add", var: "narrative_tension", value: 1 }] },
+          { speaker: "elder_kael", text: "他伸手按住你的肩膀。老人的手瘦削却有力。\n\n「我年轻时也像你这样——听到有人需要帮助，二话不说就去。那是我最好的品质，也是最坏的。」\n\n他停顿了一下，眼神暗了暗。\n\n「因为有时候，急着帮忙的人……会被利用。记住这一点。」", effects: [{ action: "set", var: "kael_gave_warning", value: true }, { action: "add", var: "affection_elder", value: 3 }] }
+        ],
+        nextRound: 4  // → second choice
+      },
+      // Round 2: "cautious" branch → lore follow-up
+      {
+        lines: [
+          { speaker: "elder_kael", text: "谨慎是好事。凯尔微微颔首。听好了——这不是普通的野兽或强盗。暗影是古老的怨念，只会被神社的光芒驱散。但光芒正在消退。", effects: [{ action: "add", var: "narrative_tension", value: 2 }] },
+          { speaker: "elder_kael", text: "他在古树下的石凳上坐下，示意你也坐。\n\n「六十年前，封印暗影的时候，我们以为它会永远沉睡。但我们错了。怨念这种东西……不会消失，只会积累。就像这棵树的年轮。」\n\n他抬头看着树冠，声音变得更低。\n\n「封印不是永久方案。它只是……争取时间。现在时间到了。」", effects: [{ action: "set", var: "kael_explained_history", value: true }, { action: "add", var: "affection_elder", value: 2 }] }
+        ],
+        nextRound: 4
+      },
+      // Round 3: "refused" branch → Lyra intervenes
+      {
+        lines: [
+          { speaker: "lyra", text: "不关你的事？莉拉冷笑了一声。那你为什么会在村口昏倒？为什么你身上带着神社的印记？她指了指你手腕上的淡淡光纹——你之前完全没注意到。" },
+          { speaker: "elder_kael", text: "够了，莉拉。凯尔抬手制止了她。强迫的帮助不是帮助。旅行者，如果你改变主意，我就在这棵树下。", effects: [{ action: "set", var: "refused_but_marked", value: true }, { action: "set", var: "has_shrine_mark", value: true }] },
+          { speaker: "elder_kael", text: "他转过身准备离开，但走了两步又停下。\n\n「你知道吗，旅行者？」他没有回头。「六十年前，也有一个人说了同样的话：'这不关我的事。'后来他回来了——在一切都太迟了之后。」\n\n「我希望你不用等到那天。」", effects: [{ action: "set", var: "kael_told_cautionary_tale", value: true }, { action: "add", var: "narrative_tension", value: 3 }] }
+        ],
+        nextRound: 4
+      },
+      // Round 4: Second choice — where to go next
+      {
+        lines: [
+          { speaker: "elder_kael", text: "神社在森林深处，过了低语桥就是。但你需要做好准备——去找马库斯，村中的铁匠。他能给你合适的武器。", effects: [{ action: "set", var: "objective", value: "visit_blacksmith" }, { action: "set", var: "has_shrine_mark", value: true }] }
+        ],
+        choices: [
+          {
+            text: "「好，我去找铁匠。」",
+            effects: [{ action: "set", var: "next_destination", value: "blacksmith" }],
+            nextRound: 5
+          },
+          {
+            text: "「等一下，我想先了解更多关于神社的事。」",
+            effects: [{ action: "add", var: "affection_elder", value: 2 }],
+            nextRound: 6
+          },
+          {
+            text: "「（看向莉拉）你也会去吗？」",
+            effects: [{ action: "add", var: "affection_lyra", value: 2 }],
+            nextRound: 7
+          }
+        ]
+      },
+      // Round 5: "go to blacksmith" direct
+      {
+        lines: [
+          { speaker: "elder_kael", text: "愿光芒指引你的道路。" }
+        ],
+        isFinal: true
+      },
+      // Round 6: "ask about shrine" lore
+      {
+        lines: [
+          { speaker: "elder_kael", text: "神社……是古代一位守护者建造的，用来镇压暗影的本源。但那位守护者最终被最信任的人背叛，她的怨念化作了暗影本身。封印不是囚禁——是让她安息。但现在，封印正在破裂。", effects: [{ action: "set", var: "knows_shrine_lore", value: true }, { action: "set", var: "next_destination", value: "blacksmith" }] },
+          { speaker: "elder_kael", text: "他的声音变得更轻，像是在自言自语。\n\n「背叛……是人类最古老的武器。那个守护者把后背交给了她最信任的人——她的恋人和她的兄弟。两个人都参加了封印仪式。但仪式完成后……他们在她转身的瞬间，将仪式之刃刺入了她的心脏。」\n\n「他们说，是为了防止她变成暗影。但谁知道真相呢？六百年前的真相，只剩下这棵树的记忆了。」", effects: [{ action: "set", var: "knows_betrayal_details", value: true }, { action: "add", var: "narrative_tension", value: 3 }] }
+        ],
+        isFinal: true
+      },
+      // Round 7: "ask about Lyra"
+      {
+        lines: [
+          { speaker: "lyra", text: "当然。她难得地露出一丝笑容。我等你三年了，不差这一个小时。", effects: [{ action: "set", var: "lyra_will_accompany", value: true }, { action: "set", var: "next_destination", value: "blacksmith" }] },
+          { speaker: "lyra", text: "她走到你身边，声音低得只有你能听见。\n\n「三年前我独自走过那座桥。」她的手指不自觉地攥紧了袖口。「差点没回来。所以这一次——两个人，应该会好一点。」\n\n她没有看你的眼睛。但你看到了她攥紧的指节。", effects: [{ action: "set", var: "lyra_admitted_past", value: true }, { action: "add", var: "affection_lyra", value: 3 }] }
+        ],
+        isFinal: true
+      }
+    ]
+  },
+
+  // ─────────────────────────────────────────────────────────────────
+  // NPC 2: 铁匠 马库斯 — scene_blacksmith (铁匠铺)
+  // ─────────────────────────────────────────────────────────────────
+  {
+    id: 2,
+    name: "马库斯",
+    title: "铁匠",
+    emoji: "⚒️",
+    x: 650, y: 230,
+    color: [230, 115, 75],
+    rounds: [
+      // Round 0: Blacksmith narration + Marcus intro → weapon choice
+      {
+        lines: [
+          { speaker: "narrator", text: "铁锤敲击铁砧的声音从远处就能听到。铺子里热浪扑面，炉火映红了四壁。一个魁梧的男人正抡着铁锤，汗水顺着背脊流下。" },
+          { speaker: "marcus", text: "哈！又一个被凯尔忽悠来的？马库斯头也不抬，手上的铁锤不停。行，我看看——你需要一把剑，还是斧子？", effects: [{ action: "set", var: "met_marcus", value: true }] },
+          { speaker: "marcus", text: "等等……他停下锤子，仔细打量了你一番。你身上有神社的气息。不是普通人。凯尔那老头这次没选错。" },
+          { speaker: "marcus", text: "他把铁锤搁在砧板上，擦了擦手上的汗。炉火在他身后跳动，把他的影子投在墙上——一个巨大的、不停晃动的黑影。\n\n「知道吗？上一次有人带着神社气息走进这个铺子，是六十年前。我老爹接待的。后来他死了。」\n\n他顿了顿，咧嘴一笑——但那笑容不达眼底。\n\n「不过别担心。我老爹的武器可没死。」" }
+        ],
+        choices: [
+          {
+            text: "「给我一把剑。轻便、锋利。」",
+            effects: [
+              { action: "set", var: "weapon", value: "sword" },
+              { action: "set", var: "weapon_desc", value: "银刃长剑——对暗影生物有额外杀伤" },
+              { action: "add", var: "affection_marcus", value: 2 }
+            ],
+            nextRound: 1
+          },
+          {
+            text: "「我需要一面盾牌。防御比进攻更重要。」",
+            effects: [
+              { action: "set", var: "weapon", value: "shield" },
+              { action: "set", var: "weapon_desc", value: "古木护盾——能反弹暗影的低语" },
+              { action: "add", var: "affection_marcus", value: 1 }
+            ],
+            nextRound: 2
+          },
+          {
+            text: "「我不需要武器。光靠双手就够了。」",
+            effects: [
+              { action: "set", var: "weapon", value: "none" },
+              { action: "set", var: "weapon_desc", value: "空手——但神社的光芒会是你真正的武器" },
+              { action: "add", var: "affection_marcus", value: 3 }
+            ],
+            nextRound: 3
+          }
+        ]
+      },
+      // Round 1: "sword" branch
+      {
+        lines: [
+          { speaker: "marcus", text: "好眼光！他从墙上的剑架上取下一柄剑，剑身在炉火下泛着银光。这是我父亲铸造的最后一把武器——银刃剑。对一般敌人只是锋利，但对暗影……它比什么都管用。", effects: [{ action: "set", var: "has_special_weapon", value: true }] },
+          { speaker: "marcus", text: "他把剑递给你时，手微微抖了一下。\n\n「这把剑……我老爹铸了整整三个月。他死后，我把剑从废墟里找回来的时候，剑身还是温热的。」\n\n马库斯深吸一口气。\n\n「暗影怕的不是剑。是铸剑的人留在剑里的一口气。所以——别辜负它。」", effects: [{ action: "add", var: "affection_marcus", value: 3 }, { action: "set", var: "marcus_shared_sword_lore", value: true }] }
+        ],
+        nextRound: 4
+      },
+      // Round 2: "shield" branch
+      {
+        lines: [
+          { speaker: "marcus", text: "聪明。马库斯从角落里翻出一面看起来古老但结实的木盾。这面盾是用神社古树的枝条编的。暗影的低语碰到它会反弹——你可以在靠近神社的时候保护自己。", effects: [{ action: "set", var: "has_special_weapon", value: true }] },
+          { speaker: "marcus", text: "他把盾翻过来，背面刻着一行小字。\n\n「'守护，而非伤害。'这是我老爹刻的。他觉得最好的武器不是杀人的——是让人不用被杀的。」\n\n马库斯哼了一声。\n\n「天真。但也不全错。」", effects: [{ action: "add", var: "affection_marcus", value: 2 }, { action: "set", var: "marcus_shared_shield_lore", value: true }] }
+        ],
+        nextRound: 4
+      },
+      // Round 3: "none" branch
+      {
+        lines: [
+          { speaker: "marcus", text: "他愣了一下，然后放声大笑。哈哈哈！有种！但随即收敛笑容，压低声音。听着，小子。我父亲就是空手面对暗影死的。不是勇敢的问题——是愚蠢。" },
+          { speaker: "marcus", text: "他转过身在架子上翻了一会儿，拿出一个小布袋。\n\n「拿着。」他把它塞进你手里。里面是三颗泛着微光的石子。「神社的护符碎片。不值钱，但能在暗影靠近的时候发烫。比空手强。」\n\n他不再看你，重新拿起了铁锤。\n\n「……走吧。趁我还没后悔。」", effects: [{ action: "set", var: "has_lantern", value: true }, { action: "set", var: "marcus_gave_charm", value: true }, { action: "add", var: "affection_marcus", value: 4 }] }
+        ],
+        nextRound: 4
+      },
+      // Round 4: Warning + departure
+      {
+        lines: [
+          { speaker: "marcus", text: "……算了。他背过身去，声音低了下来。不管你带什么去，记住一句话：暗影不会攻击你的身体，它攻击你的心。它会让你看到你最怕的东西。", effects: [{ action: "set", var: "marcus_warning_given", value: true }, { action: "add", var: "narrative_tension", value: 2 }] },
+          { speaker: "marcus", text: "好了，别磨蹭了。神社在等你——我能感觉到。天色越暗，暗影越强。现在出发，你还能在天黑前到达。", effects: [{ action: "set", var: "ready_to_depart", value: true }] }
+        ],
+        isFinal: true
+      }
+    ]
+  }
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GAME STATE
+// ═══════════════════════════════════════════════════════════════════════════
+
+var state = {
+  activeNpc: null,        // which NPC is currently speaking (0,1,2) or null
+  typing: false,
+  typeActive: 0,          // unique typing session id
+  showChoices: false,
+  done: [false, false, false],      // NPC fully completed
+  npcUnlocked: [true, false, false], // which NPCs are accessible
+  round: [0, 0, 0],                // current round index for each NPC
+  currentLineIdx: [0, 0, 0],       // which line within the current round
+  allDone: false
+};
+
+window.__gameState = state;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HELPER: get current choices for active NPC
+// ═══════════════════════════════════════════════════════════════════════════
+function currentChoices() {
+  var idx = state.activeNpc;
+  if (idx === null) return null;
+  var d = npcData[idx];
+  var r = state.round[idx];
+  var round = d.rounds[r];
+  return round ? round.choices : null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TYPEWRITER — now updates DOM overlay instead of Kaboom text
+// ═══════════════════════════════════════════════════════════════════════════
+var _typeIdCounter = 0;
+
+function typeText(lines, onDone) {
+  _typeIdCounter++;
+  var myId = _typeIdCounter;
+  state.typeActive = myId;
+  state.typing = true;
+  state.showChoices = false;
+  clearAllChoices();
+
+  var lineIdx = 0, charIdx = 0, display = "";
+
+  // Update speaker name from the first line
+  if (lines.length > 0) {
+    // Auto-detect speaker from first line pattern 【名称】
+    var firstLine = lines[0];
+    var speakerMatch = firstLine.match(/^【(.+?)】/);
+    if (speakerMatch) {
+      setSpeakerName(speakerMatch[1]);
+    }
+  }
+
+  loop(0.04, function() {
+    if (state.typeActive !== myId) return;
+    if (lineIdx >= lines.length) {
+      state.typeActive = 0;
+      state.typing = false;
+      // Show final text in overlay
+      ovHtml('dialog-text', display.replace(/\n/g, '<br>'));
+      if (onDone) onDone();
+      return;
+    }
+    var cur = lines[lineIdx];
+    if (charIdx < cur.length) {
+      display += cur[charIdx];
+      charIdx++;
+      ovHtml('dialog-text', display.replace(/\n/g, '<br>') + '<span style="color:#ccc">▌</span>');
+    } else {
+      if (lineIdx < lines.length - 1) display += "\n";
+      lineIdx++;
+      charIdx = 0;
+      ovHtml('dialog-text', display.replace(/\n/g, '<br>') + '<span style="color:#ccc">▌</span>');
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CHOICE UI — DOM overlay (with Kaboom rects for hit detection)
+// ═══════════════════════════════════════════════════════════════════════════
+var _choiceBoxes = [];
+var _choiceRects = []; // Kaboom rect game objects
+
+function showChoices(choices) {
+  if (state.showChoices) return;
+  state.showChoices = true;
+  clearAllChoices();
+
+  var count = choices.length;
+  var boxW = count === 3 ? 230 : 340;
+  var startX = count === 3 ? 20 : 40;
+  var gap = count === 3 ? 250 : 380;
+  var labels = ["A", "B", "C"];
+
+  for (var i = 0; i < count; i++) {
+    var cx = startX + i * (boxW + 10);
+    // Kaboom rect for hit detection
+    var rectId = 'choice-rect-' + i;
+    var rect = add([
+      rect(boxW, 42, { radius: 8 }),
+      color(50, 60, 100),
+      pos(cx, 525),
+      area(),
+      outline(2, rgb(150, 180, 255)),
+      rectId
+    ]);
+    _choiceRects.push({ id: rectId, go: rect, idx: i });
+
+    // DOM text overlay for choice text
+    var html = '<b>' + labels[i] + '.</b> ' + choices[i].text;
+    var fontSize = count === 3 ? 13 : 15;
+    ovSet('choice-txt-' + i, cx + 12, 532, html, fontSize, '#fff', { width: boxW - 20 });
+    _ovEls['choice-txt-' + i].classList.add('ov-choice');
+    _ovEls['choice-txt-' + i].style.height = '34px';
+    _ovEls['choice-txt-' + i].style.lineHeight = '20px';
+    _choiceBoxes.push({ id: 'choice-txt-' + i });
+  }
+}
+
+function clearAllChoices() {
+  state.showChoices = false;
+  for (var i = 0; i < _choiceBoxes.length; i++) {
+    ovDestroy(_choiceBoxes[i].id);
+  }
+  _choiceBoxes = [];
+  for (var j = 0; j < _choiceRects.length; j++) {
+    destroy(_choiceRects[j].go);
+  }
+  _choiceRects = [];
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SPEAKER NAME DISPLAY — DOM overlay
+// ═══════════════════════════════════════════════════════════════════════════
+
+function setSpeakerName(displayName) {
+  if (displayName) {
+    ovSet('speaker-name', 50, 415, displayName, 14, 'rgb(255,215,140)', { speaker: true });
+  } else {
+    ovHide('speaker-name');
+  }
+}
+
+function clearSpeakerName() {
+  ovHide('speaker-name');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SPEAKER COLOR MAP (from game-data.js CHARACTERS)
+// ═══════════════════════════════════════════════════════════════════════════
+var speakerColors = {
+  "narrator":   [170, 170, 170],
+  "lyra":       [140, 200, 230],
+  "elder_kael": [200, 170, 110],
+  "marcus":     [230, 115, 75]
+};
+
+var speakerNames = {
+  "narrator":   { name: "旁白", title: "" },
+  "lyra":       { name: "莉拉", title: "银发少女" },
+  "elder_kael": { name: "凯尔", title: "村长" },
+  "marcus":     { name: "马库斯", title: "铁匠" }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NPC CONVERSATION ENGINE
+// ═══════════════════════════════════════════════════════════════════════════
+function startNpcConversation(idx) {
+  if (state.typing) return;
+  if (state.done[idx]) return;
+  if (state.activeNpc !== null && state.activeNpc !== idx) return;
+  if (!state.npcUnlocked[idx]) return;
+
+  state.activeNpc = idx;
+  var d = npcData[idx];
+  var r = state.round[idx];
+  var round = d.rounds[r];
+  if (!round) return;
+
+  // Highlight active NPC
+  for (var i = 0; i < 3; i++) {
+    if (window._npcGlow[i]) window._npcGlow[i].opacity = (i === idx) ? 0.35 : 0;
+  }
+
+  playRound(idx, round);
+}
+
+function playRound(idx, round) {
+  var d = npcData[idx];
+
+  // Build display lines: each line prefixed with speaker info for the typewriter
+  var displayLines = [];
+  var totalEffects = [];
+
+  for (var i = 0; i < round.lines.length; i++) {
+    var ln = round.lines[i];
+    var sp = speakerNames[ln.speaker] || { name: ln.speaker, title: "" };
+    // Show speaker name before their line
+    displayLines.push("【" + (sp.title ? sp.title + " · " : "") + sp.name + "】");
+    displayLines.push(ln.text);
+    if (ln.effects) {
+      totalEffects.push.apply(totalEffects, ln.effects);
+    }
+  }
+
+  // Apply effects from all lines
+  applyEffects(totalEffects);
+
+  // ── INVENTORY: detect items from line effects ──
+  for (var ei = 0; ei < totalEffects.length; ei++) {
+    var eff = totalEffects[ei];
+    if (eff.action === 'set' && eff.var === 'has_shrine_mark' && eff.value === true) {
+      addToInventory({ id: 'shrine_mark', name: '神社印记', desc: '手腕上的淡淡光纹——你被选中的证明。', icon: '✨', source: '凯尔' });
+    }
+    if (eff.action === 'set' && eff.var === 'has_special_weapon' && eff.value === true) {
+      if (vars.weapon === 'sword') {
+        addToInventory({ id: 'sword', name: '银刃长剑', desc: '对暗影生物有额外杀伤。马库斯父亲的遗作。', icon: '⚔️', source: '马库斯' });
+      } else if (vars.weapon === 'shield') {
+        addToInventory({ id: 'shield', name: '古木护盾', desc: '用神社古树枝条编织，能反弹暗影低语。', icon: '🛡️', source: '马库斯' });
+      }
+    }
+    if (eff.action === 'set' && eff.var === 'has_lantern' && eff.value === true) {
+      addToInventory({ id: 'charm', name: '神社护符碎片', desc: '三颗泛着微光的石子。暗影靠近时会发烫。', icon: '💎', source: '马库斯' });
+    }
+  }
+
+  // Play the lines
+  var allLines = flattenDisplayLines(displayLines);
+
+  typeText(allLines, function() {
+    // After typing done, show choices if any
+    if (round.choices) {
+      showChoices(round.choices);
+      setSpeakerName("");
+    } else if (round.isFinal) {
+      // Mark NPC done
+      state.done[idx] = true;
+      state.activeNpc = null;
+      if (window._npcGlow[idx]) window._npcGlow[idx].opacity = 0;
+      if (window._npcBadges[idx]) window._npcBadges[idx].opacity = 1;
+
+      // ── JOURNAL: NPC conversation complete ──
+      addToJournal({
+        title: '✅ 与' + npcData[idx].name + '对话完成',
+        detail: npcData[idx].title + ' — 获得了指引',
+        time: new Date().toLocaleTimeString(),
+        done: true
+      });
+
+      // Unlock next NPC
+      if (idx + 1 < 3) {
+        state.npcUnlocked[idx + 1] = true;
+        if (window._npcLockIcons[idx + 1]) window._npcLockIcons[idx + 1].opacity = 0;
+        ovHtml('dialog-text', '（对话结束）' + npcData[idx + 1].title + ' ' + npcData[idx + 1].name + ' 已解锁 ▍');
+      } else {
+        ovHtml('dialog-text', '（对话结束）序幕完成 ▍');
+      }
+
+      clearSpeakerName();
+      checkAllDone();
+    } else if (round.nextRound !== undefined) {
+      // Auto-advance to next round
+      state.round[idx] = round.nextRound;
+      ovHtml('dialog-text', '');
+      clearSpeakerName();
+
+      // ── CONSEQUENCE: show affection changes from line effects ──
+      if (totalEffects.length > 0) {
+        showConsequence(npcData[idx].name, totalEffects);
+      }
+      // Small delay before auto-playing next round
+      setTimeout(function() {
+        if (state.activeNpc === idx && !state.typing) {
+          startNpcConversation(idx);
+        }
+      }, 600);
+    } else {
+      // No choices, not final, no nextRound → done with this NPC
+      state.done[idx] = true;
+      state.activeNpc = null;
+      if (window._npcGlow[idx]) window._npcGlow[idx].opacity = 0;
+      if (window._npcBadges[idx]) window._npcBadges[idx].opacity = 1;
+
+      // ── JOURNAL: NPC conversation complete ──
+      addToJournal({
+        title: '✅ 与' + npcData[idx].name + '对话完成',
+        detail: npcData[idx].title + ' — 获得了指引',
+        time: new Date().toLocaleTimeString(),
+        done: true
+      });
+
+      if (idx + 1 < 3) {
+        state.npcUnlocked[idx + 1] = true;
+        if (window._npcLockIcons[idx + 1]) window._npcLockIcons[idx + 1].opacity = 0;
+        ovHtml('dialog-text', '（对话结束）' + npcData[idx + 1].title + ' ' + npcData[idx + 1].name + ' 已解锁 ▍');
+      } else {
+        ovHtml('dialog-text', '（对话结束）序幕完成 ▍');
+      }
+      clearSpeakerName();
+      checkAllDone();
+    }
+  });
+}
+
+function flattenDisplayLines(displayLines) {
+  var result = [];
+  for (var i = 0; i < displayLines.length; i++) {
+    var line = displayLines[i];
+    var parts = line.split("\n");
+    for (var j = 0; j < parts.length; j++) {
+      result.push(parts[j]);
+    }
+  }
+  return result;
+}
+
+function selectChoice(idx, choiceN) {
+  if (!state.showChoices || state.typing) return;
+  if (state.activeNpc !== idx) return;
+
+  var round = npcData[idx].rounds[state.round[idx]];
+  if (!round || !round.choices) return;
+  if (choiceN >= round.choices.length) return;
+
+  var choice = round.choices[choiceN];
+
+  // Apply choice effects
+  applyEffects(choice.effects || []);
+
+  // ── CONSEQUENCE VISUALIZATION ──
+  var npcName = npcData[idx].name;
+  showConsequence(npcName, choice.effects || []);
+
+  // ── INVENTORY: auto-detect item acquisition from effects ──
+  if (choice.effects) {
+    for (var ei = 0; ei < choice.effects.length; ei++) {
+      var eff = choice.effects[ei];
+      if (eff.action === 'set' && eff.var === 'has_special_weapon' && eff.value === true) {
+        if (vars.weapon === 'sword') {
+          addToInventory({ id: 'sword', name: '银刃长剑', desc: '对暗影生物有额外杀伤。马库斯父亲的遗作。', icon: '⚔️', source: '马库斯' });
+        } else if (vars.weapon === 'shield') {
+          addToInventory({ id: 'shield', name: '古木护盾', desc: '用神社古树枝条编织，能反弹暗影低语。', icon: '🛡️', source: '马库斯' });
+        }
+      }
+      if (eff.action === 'set' && eff.var === 'has_lantern' && eff.value === true) {
+        addToInventory({ id: 'charm', name: '神社护符碎片', desc: '三颗泛着微光的石子。暗影靠近时会发烫。', icon: '💎', source: '马库斯' });
+      }
+      if (eff.action === 'set' && eff.var === 'has_shrine_mark' && eff.value === true) {
+        addToInventory({ id: 'shrine_mark', name: '神社印记', desc: '手腕上的淡淡光纹——你被选中的证明。', icon: '✨', source: '未知' });
+      }
+    }
+  }
+
+  // ── JOURNAL: record major choices ──
+  var detail = choice.text.length > 30 ? choice.text.substring(0, 28) + '…' : choice.text;
+  addToJournal({
+    title: '💬 与' + npcName + '的对话',
+    detail: '选择了: 「' + detail + '」',
+    time: new Date().toLocaleTimeString(),
+    done: true
+  });
+
+  // Record choice in vars
+  vars["_last_choice_npc" + idx] = choice.text;
+
+  clearAllChoices();
+
+  if (choice.nextRound !== undefined) {
+    state.round[idx] = choice.nextRound;
+    // Continue to next round
+    startNpcConversation(idx);
+  } else {
+    // No nextRound means done
+    state.done[idx] = true;
+    state.activeNpc = null;
+    if (window._npcGlow[idx]) window._npcGlow[idx].opacity = 0;
+    if (window._npcBadges[idx]) window._npcBadges[idx].opacity = 1;
+    ovHtml('dialog-text', '（对话结束）');
+    clearSpeakerName();
+
+    // ── JOURNAL: NPC conversation complete ──
+    addToJournal({
+      title: '✅ 与' + npcData[idx].name + '对话完成',
+      detail: npcData[idx].title + ' — 获得了指引',
+      time: new Date().toLocaleTimeString(),
+      done: true
+    });
+
+    checkAllDone();
+  }
+}
+
+function checkAllDone() {
+  if (state.done[0] && state.done[1] && state.done[2] && !state.allDone) {
+    state.allDone = true;
+    window.__allDone = true;
+    setTimeout(function() {
+      add([
+        rect(500, 240, { radius: 12 }),
+        color(0, 0, 0), opacity(0.92),
+        pos(150, 180),
+        outline(3, rgb(255, 215, 0))
+      ]);
+      ovSet('ending-title', width()/2, 230, '🌟 序幕完成 🌟', 36, 'rgb(255,215,0)', { center: true, title: true });
+      ovSet('ending-sub', width()/2, 280, '你已获得三位守护者的指引。<br>冒险才刚刚开始……', 16, 'rgb(220,220,220)', { center: true });
+      var summary = "武器: " + (vars.weapon || "无") + " | 好感: 莉拉" + vars.affection_lyra + " 凯尔" + vars.affection_elder + " 马库斯" + vars.affection_marcus;
+      ovSet('ending-summary', width()/2, 320, summary, 13, 'rgb(180,180,200)', { center: true });
+    }, 800);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MAIN SCENE
+// ═══════════════════════════════════════════════════════════════════════════
+scene("main", function() {
+  // Background
+  add([rect(800, 300), color(25, 40, 25), pos(0, 400)]);
+
+  // Title — DOM overlay
+  ovSet('title-main', width()/2, 25, '🌙 星落之夜 · 序幕 🌙', 20, 'rgb(220,200,140)', { center: true, title: true });
+  add([text("When Stars Fall, Shadows Rise", { size: 11 }), color(140, 140, 160), pos(width()/2, 48), origin("center")]);
+
+  // ── NPC rendering ──
+  window._npcGlow = [];
+  window._npcBadges = [];
+  window._npcLockIcons = [];
+
+  for (var i = 0; i < 3; i++) {
+    var d = npcData[i];
+    var nx = d.x, ny = d.y;
+
+    // Glow
+    var g = add([rect(72, 98, { radius: 10 }), color(d.color), opacity(0), pos(nx, ny), origin("center")]);
+    window._npcGlow.push(g);
+
+    // Body
+    add([rect(64, 90, { radius: 8 }), color(d.color), pos(nx, ny), origin("center"), area(), "npc-" + i]);
+
+    // Emoji (keep as Kaboom text - emojis render fine)
+    add([text(d.emoji, { size: 32 }), pos(nx, ny - 5), origin("center")]);
+
+    // Name — DOM overlay
+    ovSet('npc-name-' + i, nx, ny + 45, d.name, 13, '#fff', { center: true });
+
+    // Title — DOM overlay
+    ovSet('npc-title-' + i, nx, ny + 61, d.title, 10, 'rgb(180,180,180)', { center: true });
+
+    // Done badge (checkmark only, emoji is fine)
+    var bdg = add([text("✓", { size: 18 }), color(100,255,100), pos(nx + 30, ny - 40), origin("center"), opacity(0)]);
+    window._npcBadges.push(bdg);
+
+    // Lock icon (emoji is fine)
+    var lockOpacity = state.npcUnlocked[i] ? 0 : 1;
+    var lock = add([text("🔒", { size: 20 }), pos(nx - 30, ny - 40), origin("center"), opacity(lockOpacity)]);
+    window._npcLockIcons.push(lock);
+
+    // ── Affection indicator (emoji + number)
+    var affKeys = ['affection_lyra', 'affection_elder', 'affection_marcus'];
+    var affVal = vars[affKeys[i]] || 0;
+    var affIcon = affVal >= 3 ? '💚' : (affVal > 0 ? '💛' : '🤍');
+    if (affVal < 0) affIcon = '💔';
+    add([text(affIcon + ' ' + affVal, { size: 10 }), color(200, 200, 200), pos(nx, ny - 48), origin('center'), opacity(1), 'aff-' + i]);
+  }
+
+  // ── Dialog box ──
+  add([rect(740, 170, { radius: 10 }), color(0,0,0), opacity(0.88), pos(30, 410), outline(2, rgb(200,200,200))]);
+
+  // Dialog text — DOM overlay
+  ovSet('dialog-text', 50, 445, '点击「莉拉」开始故事', 18, '#fff');
+
+  // ── Starting journal entry ──
+  addToJournal({
+    title: '🌙 序幕开始',
+    detail: '你在星落村醒来，记忆一片空白……',
+    time: new Date().toLocaleTimeString(),
+    done: true
+  });
+
+  // ── UI Buttons: Inventory + Journal ──
+  // Inventory button (bottom-right)
+  window._invBtnBg = add([rect(50, 26, { radius: 6 }), color(60, 60, 80), pos(620, 588), area(), opacity(0.85), 'inv-btn']);
+  add([text('🎒', { size: 14 }), pos(625, 592)]);
+  ovSet('inv-btn-label', 648, 597, '背包 I', 9, 'rgb(200,200,200)');
+
+  // Journal button (next to inventory)
+  window._jrnBtnBg = add([rect(50, 26, { radius: 6 }), color(60, 60, 80), pos(680, 588), area(), opacity(0.85), 'jrn-btn']);
+  add([text('📜', { size: 14 }), pos(685, 592)]);
+  ovSet('jrn-btn-label', 708, 597, '日志 J', 9, 'rgb(200,200,200)');
+
+  onClick('inv-btn', function() { toggleInventory(); });
+  onClick('jrn-btn', function() { toggleJournal(); });
+
+  // ── NPC click handlers ──
+  for (var i = 0; i < 3; i++) {
+    (function(idx) {
+      onClick("npc-" + idx, function() {
+        startNpcConversation(idx);
+      });
+    })(i);
+  }
+
+  // ── Choice click handlers (up to 3 choices) ──
+  for (var c = 0; c < 3; c++) {
+    (function(choiceIdx) {
+      onClick("choice-rect-" + choiceIdx, function() {
+        if (!state.showChoices || state.typing) return;
+        var idx = state.activeNpc;
+        if (idx === null) return;
+        selectChoice(idx, choiceIdx);
+      });
+    })(c);
+  }
+
+  // ── Keyboard shortcuts ──
+  onKeyPress("1", function() {
+    if (state.showChoices && !state.typing) selectChoice(state.activeNpc, 0);
+  });
+  onKeyPress("2", function() {
+    if (state.showChoices && !state.typing) selectChoice(state.activeNpc, 1);
+  });
+  onKeyPress("3", function() {
+    if (state.showChoices && !state.typing) selectChoice(state.activeNpc, 2);
+  });
+  onKeyPress("i", function() { toggleInventory(); });
+  onKeyPress("j", function() { toggleJournal(); });
+
+  // Click anywhere to skip/advance typing (speed up)
+  onClick(function() {
+    // This would require implementing a skip feature
+    // For now, just a placeholder
+  });
+});
+
+go("main");
+</script>
+</body>
+</html>
