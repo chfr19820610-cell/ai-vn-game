@@ -2,1441 +2,2859 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=800">
-<title>星落之夜 · 序幕 — v2 Story</title>
-<!-- Noto Sans SC for Chinese rendering -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>星落之夜 v2.0</title>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    background: #0a0a1a;
-    display: flex; justify-content: center; align-items: center;
-    height: 100vh; overflow: hidden;
-    font-family: 'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif;
-  }
-  #game-wrapper {
-    position: relative;
-    width: 800px; height: 600px;
-  }
-  canvas { display: block; border-radius: 8px; }
-  #overlay {
-    position: absolute;
-    top: 0; left: 0;
-    width: 800px; height: 600px;
-    pointer-events: none;
-    z-index: 10;
-  }
-  #overlay .ov-text {
-    position: absolute;
-    white-space: pre-wrap;
-    line-height: 1.35;
-    pointer-events: auto;
-    user-select: none;
-  }
-  #overlay .ov-center { transform: translate(-50%, -50%); }
-  #overlay .ov-speaker { font-weight: 700; }
-  #overlay .ov-choice {
-    padding: 4px 10px;
-    border-radius: 8px;
-    cursor: pointer;
-    pointer-events: auto;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  #overlay .ov-title { font-weight: 700; text-shadow: 0 0 8px rgba(200,180,100,0.5); }
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#0a0e1a;color:#e2e8f0;font-family:system-ui,-apple-system,sans-serif}
+#game-root{width:100%;height:100%;position:relative;overflow:hidden}
 </style>
 </head>
 <body>
-<div id="game-wrapper">
-  <!-- Kaboom canvas inserted here -->
-  <div id="overlay"></div>
-</div>
-<!-- Headless compatibility: polyfill requestAnimationFrame BEFORE Kaboom loads.
-     Kaboom captures window.requestAnimationFrame at init time; without this,
-     its internal render loop never fires in headless Playwright. -->
-<script>
-(function() {
-  var isHeadless = typeof navigator !== 'undefined' && navigator.webdriver === true;
-  if (!isHeadless) isHeadless = !!(window.__HEADLESS_MODE);
-  if (isHeadless) {
-    console.log('[v2-story] headless pre-init: polyfilling requestAnimationFrame');
-    var rafFallbackMs = 16;
-    window.requestAnimationFrame = function(cb) {
-      return setTimeout(function() { cb(Date.now()); }, rafFallbackMs);
-    };
-    window.cancelAnimationFrame = function(id) { clearTimeout(id); };
-    window.__HEADLESS_PRE_PATCH = true;
+<div id="game-root"></div>
+<script type="module">// core/FlagSystem.js
+function FlagSystem() {
+  const state = {
+    // 6 核心变量
+    village_trust: 0,
+    star_understanding: 0,
+    knew_previous: false,
+    sided_with: "none",
+    has_star_ember: false,
+    truth_revealed: false,
+    // 3 好感度
+    affection_kael: 0,
+    affection_marcus: 0,
+    affection_lyra: 0,
+    // 道具旗标（v2.0 3件关键道具）
+    item_star_ember: false,
+    item_old_cloak: false,
+    item_kael_watch: false
+  };
+  const listeners = {};
+  function onChange(key, val) {
+    (listeners.change || []).forEach((fn) => fn({ key, value: val }));
   }
-})();
-</script>
-<script src="https://unpkg.com/kaboom@2000.2.1/dist/kaboom.js"></script>
-<script>
-kaboom({ global: true, width: 800, height: 600, background: [15,15,35] });
+  return {
+    /** 获取任意旗标值 */
+    getFlag(key) {
+      return state[key];
+    },
+    /** 设置旗标值，触发 change 事件 */
+    setFlag(key, val) {
+      const old = state[key];
+      state[key] = val;
+      if (old !== val) onChange(key, val);
+    },
+    /** 检查旗标是否等于指定值（=== 比较） */
+    hasFlag(key, val) {
+      return state[key] === val;
+    },
+    /** 获取角色好感度 */
+    getAffection(charId) {
+      const key = "affection_" + charId;
+      return state[key] !== void 0 ? state[key] : 0;
+    },
+    /** 增加/减少好感度，返回新值 */
+    addAffection(charId, delta) {
+      const key = "affection_" + charId;
+      const current = state[key] !== void 0 ? state[key] : 0;
+      const next = Math.max(0, Math.min(10, current + delta));
+      state[key] = next;
+      onChange(key, next);
+      return next;
+    },
+    /** 获取完整状态快照（用于存档） */
+    getSnapshot() {
+      return { ...state };
+    },
+    /** 从快照恢复状态（用于读档） */
+    restoreSnapshot(snapshot) {
+      Object.keys(snapshot).forEach((k) => {
+        state[k] = snapshot[k];
+      });
+    },
+    /**
+     * 条件表达式求值
+     * 支持的语法:
+     *   "flag_xxx === true"
+     *   "flag_xxx === false"
+     *   "flag_xxx === 3"
+     *   "affection_kael >= 5"
+     *   "hasStarEmber"  (简写，等价于 flag_has_star_ember === true)
+     *   "affection_lyra > 0"
+     *   "flag_knew_previous === true"
+     *   "flag_sided_with === \"kael\""
+     *
+     * 返回 boolean
+     */
+    evaluateCondition(expr) {
+      if (!expr || expr === "true") return true;
+      if (expr === "false") return false;
+      if (/^[a-z][a-zA-Z0-9_]*$/.test(expr) && !expr.includes(" ")) {
+        const val = state[expr];
+        return val === true || val === 1 || val === "1";
+      }
+      const match = expr.match(
+        /^(flag_)?([a-zA-Z_]\w*)\s*(==|===|!==|!=|>=|<=|>|<)\s*(.+)$/
+      );
+      if (!match) {
+        console.warn("[FlagSystem] \u65E0\u6CD5\u89E3\u6790\u6761\u4EF6:", expr);
+        return false;
+      }
+      const key = match[2];
+      const op = match[3];
+      let right = match[4].trim();
+      let rVal;
+      if (right === "true") rVal = true;
+      else if (right === "false") rVal = false;
+      else if (/^\d+$/.test(right)) rVal = parseInt(right, 10);
+      else if (/^"(.+)"$/.test(right)) rVal = RegExp.$1;
+      else rVal = right;
+      const lVal = state[key];
+      switch (op) {
+        case "===":
+        case "==":
+          return lVal === rVal;
+        case "!==":
+        case "!=":
+          return lVal !== rVal;
+        case ">=":
+          return lVal >= rVal;
+        case "<=":
+          return lVal <= rVal;
+        case ">":
+          return lVal > rVal;
+        case "<":
+          return lVal < rVal;
+        default:
+          return false;
+      }
+    },
+    /** 订阅状态变化 */
+    onChange(fn) {
+      if (!listeners.change) listeners.change = [];
+      listeners.change.push(fn);
+      return () => {
+        listeners.change = (listeners.change || []).filter((f) => f !== fn);
+      };
+    }
+  };
+}
 
-// ═══════════════════════════════════════════════════════════════════════════
-// HEADLESS COMPATIBILITY: override Kaboom's loop() with setInterval
-// Kaboom v2000 exposes loop() as a global. In headless, rAF-based loop()
-// still has issues — replace with setInterval for the typewriter.
-// ═══════════════════════════════════════════════════════════════════════════
-(function() {
-  if (window.__HEADLESS_PRE_PATCH) {
-    console.log('[v2-story] headless post-init: replacing loop() with setInterval');
-    var _loopHandles = {};
-    var _loopSeq = 0;
-    window.loop = function(intervalSec, cb) {
-      var ms = Math.max(1, Math.round(intervalSec * 1000));
-      var id = ++_loopSeq;
-      var handle = setInterval(cb, ms);
-      _loopHandles[id] = handle;
-      return { cancel: function() { clearInterval(_loopHandles[id]); delete _loopHandles[id]; } };
-    };
-    window.__HEADLESS_PATCH_ACTIVE = true;
-    console.log('[v2-story] headless patches active (rAF pre-init + loop post-init)');
-  } else {
-    console.log('[v2-story] headed mode, no patches needed');
+// core/SceneManager.js
+function SceneManager({ scenes, container }) {
+  const SCENES2 = scenes || {};
+  let currentSceneId = null;
+  let currentScene = null;
+  const bgLayer = document.createElement("div");
+  Object.assign(bgLayer.style, {
+    position: "fixed",
+    inset: "0",
+    zIndex: "1",
+    transition: "opacity 0.3s ease, background 0.8s ease",
+    pointerEvents: "none"
+  });
+  const overlay = document.createElement("div");
+  Object.assign(overlay.style, {
+    position: "fixed",
+    inset: "0",
+    zIndex: "40",
+    pointerEvents: "none",
+    opacity: "0",
+    transition: "opacity 0.3s ease",
+    background: "#0a0e1a"
+  });
+  const root = container || document.body;
+  root.insertBefore(bgLayer, root.firstChild);
+  root.appendChild(overlay);
+  function applyBackground(scene) {
+    if (!scene) return;
+    const colors = scene.bg_color || ["#0a0e1a", "#1a2332"];
+    bgLayer.style.background = `radial-gradient(ellipse at center, ${colors[0]} 0%, ${colors[1]} 100%)`;
   }
-})();
-
-// Fix: move canvas into #game-wrapper so overlay and canvas share the same positioned parent
-// Kaboom appends canvas to <body> by default, which causes overlay drift in flex layouts
-(function() {
-  var canvas = document.querySelector('canvas');
-  var wrapper = document.getElementById('game-wrapper');
-  if (canvas && wrapper) {
-    wrapper.insertBefore(canvas, wrapper.firstChild);
-    console.log('[fix] canvas moved into #game-wrapper');
+  function updateMeta(scene) {
+    document.title = `\u661F\u843D\u4E4B\u591C \u2014 ${scene.name || ""}`;
   }
-})();
-
-// ═══════════════════════════════════════════════════════════════════════════
-// DOM OVERLAY SYSTEM — for Chinese text rendering
-// Kaboom v2000 bitmap fonts don't support CJK, so we use DOM overlay
-// ═══════════════════════════════════════════════════════════════════════════
-var overlay = document.getElementById('overlay');
-var _ovEls = {}; // id → DOM element
-
-function ovEl(id) {
-  if (!_ovEls[id]) {
-    var el = document.createElement('div');
-    el.className = 'ov-text';
-    el.id = 'ov-' + id;
-    overlay.appendChild(el);
-    _ovEls[id] = el;
-  }
-  return _ovEls[id];
-}
-
-function ovSet(id, x, y, html, size, color, opts) {
-  var el = ovEl(id);
-  el.style.left = x + 'px';
-  el.style.top = y + 'px';
-  el.style.fontSize = (size || 16) + 'px';
-  el.style.color = color || '#fff';
-  el.innerHTML = html;
-  if (opts && opts.center) el.classList.add('ov-center');
-  else el.classList.remove('ov-center');
-  if (opts && opts.speaker) el.classList.add('ov-speaker');
-  else el.classList.remove('ov-speaker');
-  if (opts && opts.title) el.classList.add('ov-title');
-  else el.classList.remove('ov-title');
-  if (opts && opts.width) el.style.width = opts.width + 'px';
-  el.style.display = '';
-  el.style.opacity = (opts && opts.opacity !== undefined) ? opts.opacity : '1';
-  return el;
-}
-
-function ovHide(id) {
-  var el = _ovEls[id];
-  if (el) el.style.display = 'none';
-}
-
-function ovDestroy(id) {
-  var el = _ovEls[id];
-  if (el) { el.remove(); delete _ovEls[id]; }
-  // Also destroy Kaboom game object if exists
-  var go = _ovGo[id];
-  if (go) { destroy(go); delete _ovGo[id]; }
-}
-
-function ovHtml(id, html) {
-  var el = _ovEls[id];
-  if (el) el.innerHTML = html;
-}
-
-function ovOpacity(id, val) {
-  var el = _ovEls[id];
-  if (el) el.style.opacity = val;
-}
-
-// Kaboom game objects associated with overlay elements (so we can use Kaboom area/onClick)
-var _ovGo = {};
-
-function ovRect(id, x, y, w, h, color, opts) {
-  var go = add([
-    rect(w, h, { radius: (opts && opts.radius) || 0 }),
-    color.apply(null, color),
-    pos(x, y),
-    area(),
-    opacity((opts && opts.opacity !== undefined) ? opts.opacity : 1),
-    outline((opts && opts.outline) || 0, (opts && opts.outlineColor) || rgb(0,0,0)),
-    id
-  ]);
-  _ovGo[id] = go;
-  return go;
-}
-
-// Convenience: create both a Kaboom rect and overlay text for a choice button
-function ovChoice(id, x, y, w, html, size, textColor, bgColor, outlineColor) {
-  // Kaboom rect for hit detection
-  ovRect('choice-rect-' + id, x, y, w, 42, bgColor || [50,60,100], { radius: 8, outline: 2, outlineColor: outlineColor || rgb(150,180,255) });
-  // DOM text overlay
-  var el = ovSet(id, x + 10, y + 10, html, size || 14, textColor || '#fff');
-  el.classList.add('ov-choice');
-  el.style.width = (w - 20) + 'px';
-  el.style.height = '28px';
-  el.style.lineHeight = '28px';
-  return el;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Playwright Click Compatibility Fix
-// ═══════════════════════════════════════════════════════════════════════════
-(function() {
-  var canvas = document.querySelector('canvas');
-  if (!canvas) return;
-  console.log('[v2-story] canvas found, installing click shim');
-
-  function synthMouse(type, src) {
-    return new MouseEvent(type, {
-      button: src.button, buttons: src.buttons,
-      clientX: src.clientX, clientY: src.clientY,
-      offsetX: src.offsetX, offsetY: src.offsetY,
-      screenX: src.screenX, screenY: src.screenY,
-      movementX: 0, movementY: 0,
-      bubbles: true, cancelable: true
+  const eventHandlers = {};
+  function emit(event, data) {
+    (eventHandlers[event] || []).forEach((h) => {
+      try {
+        h(data);
+      } catch (e) {
+        console.error("[SceneManager] \u4E8B\u4EF6\u9519\u8BEF:", e);
+      }
     });
   }
-
-  canvas.addEventListener('mousedown', function(e) {
-    canvas.dispatchEvent(synthMouse('mousemove', e));
-  }, true);
-
-  canvas.addEventListener('pointerdown', function(e) {
-    canvas.dispatchEvent(new PointerEvent('pointermove', {
-      pointerId: e.pointerId, pointerType: e.pointerType,
-      clientX: e.clientX, clientY: e.clientY,
-      bubbles: true, cancelable: true
-    }));
-  }, true);
-
-  canvas.addEventListener('mouseup', function(e) {
-    var pressed = (typeof isMousePressed === 'function') && isMousePressed();
-    if (pressed) {
-      e.stopImmediatePropagation();
-      requestAnimationFrame(function() {
-        canvas.dispatchEvent(synthMouse('mouseup', e));
+  const api = {
+    /** DOM 层引用（供外部样式覆盖） */
+    bgLayer,
+    overlay,
+    /**
+     * 切换场景
+     * @param {string} sceneId
+     * @param {Object} [transition]
+     * @param {string} [transition.type='fade'] - 过渡类型
+     * @param {number} [transition.duration=400] - 过渡时长 (ms)
+     * @param {Function} [transition.onComplete] - 过渡完成回调
+     */
+    switchScene(sceneId, transition = {}) {
+      const scene = SCENES2[sceneId];
+      if (!scene) {
+        console.error(`[SceneManager] \u573A\u666F\u4E0D\u5B58\u5728: ${sceneId}`);
+        return;
+      }
+      const type = transition.type || "fade";
+      const duration = transition.duration || 400;
+      const prevSceneId = currentSceneId;
+      const prevScene = currentScene;
+      emit("beforeSwitch", {
+        from: prevSceneId,
+        to: sceneId,
+        transition: type
       });
-    }
-  }, true);
-
-  canvas.addEventListener('pointerup', function(e) {
-    var pressed = (typeof isMousePressed === 'function') && isMousePressed();
-    if (pressed) {
-      e.stopImmediatePropagation();
-      requestAnimationFrame(function() {
-        canvas.dispatchEvent(new PointerEvent('pointerup', {
-          pointerId: e.pointerId, pointerType: e.pointerType,
-          clientX: e.clientX, clientY: e.clientY,
-          button: e.button, buttons: e.buttons,
-          bubbles: true, cancelable: true
-        }));
+      overlay.style.transition = `opacity ${duration}ms ease`;
+      overlay.style.opacity = "1";
+      overlay.style.background = "#0a0e1a";
+      setTimeout(() => {
+        currentSceneId = sceneId;
+        currentScene = scene;
+        applyBackground(scene);
+        updateMeta(scene);
+        overlay.style.opacity = "0";
+        setTimeout(() => {
+          emit("afterSwitch", {
+            from: prevSceneId,
+            to: sceneId,
+            scene
+          });
+          if (transition.onComplete) transition.onComplete(scene);
+        }, duration);
+      }, duration);
+    },
+    /**
+     * 立即切换到场景（无过渡动画）
+     * @param {string} sceneId
+     */
+    setScene(sceneId) {
+      const scene = SCENES2[sceneId];
+      if (!scene) {
+        console.error(`[SceneManager] \u573A\u666F\u4E0D\u5B58\u5728: ${sceneId}`);
+        return;
+      }
+      currentSceneId = sceneId;
+      currentScene = scene;
+      applyBackground(scene);
+      updateMeta(scene);
+      overlay.style.opacity = "0";
+      emit("afterSwitch", {
+        from: currentSceneId,
+        to: sceneId,
+        scene,
+        instant: true
       });
-    }
-  }, true);
-
-  console.log('[v2-story] click shim installed');
-})();
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Programmatic Helpers (for Playwright/testing)
-// ═══════════════════════════════════════════════════════════════════════════
-window.__clickNpc = function(idx) {
-  if (state.typing) return false;
-  if (state.done[idx]) return false;
-  if (state.activeNpc !== null && state.activeNpc !== idx) return false;
-  if (!state.npcUnlocked[idx]) return false;
-  console.log('[__clickNpc] triggering npc ' + idx);
-  startNpcConversation(idx);
-  return true;
-};
-window.__clickChoice = function(n) {
-  if (!state.showChoices || state.typing) return false;
-  var idx = state.activeNpc;
-  if (idx === null) return false;
-  var choices = currentChoices();
-  if (!choices || n >= choices.length) return false;
-  console.log('[__clickChoice] selecting choice ' + n + ' for npc ' + idx);
-  selectChoice(idx, n);
-  return true;
-};
-window.__gameState = null; // set after state init
-window.__gameVars = null;
-
-// ═══════════════════════════════════════════════════════════════════════════
-// VARIABLE SYSTEM — mirrors game-data.js VARIABLES + checkCondition/applyEffects
-// ═══════════════════════════════════════════════════════════════════════════
-
-var vars = {
-  // Player state
-  origin: "",
-  weapon: "",
-  weapon_desc: "",
-  has_shrine_mark: false,
-  has_special_weapon: false,
-  has_lantern: false,
-  heading_to_square: false,
-  ready_to_depart: false,
-
-  // Affection
-  affection_lyra: 0,
-  affection_elder: 0,
-  affection_marcus: 0,
-
-  // Narrative
-  narrative_tension: 0,
-  quest: "none",
-  objective: "",
-  lyra_will_accompany: false,
-  shadow_has_advantage: false,
-  kael_trusts_player: false,
-
-  // NPC branch flags
-  lyra_shared_origin: false,
-  lyra_doubted_player: false,
-  lyra_observing_player: false,
-  lyra_admitted_past: false,
-  kael_gave_warning: false,
-  kael_explained_history: false,
-  kael_told_cautionary_tale: false,
-  marcus_shared_sword_lore: false,
-  marcus_shared_shield_lore: false,
-  marcus_gave_charm: false,
-  marcus_warning_given: false,
-
-  // Meta
-  met_lyra: false,
-  met_elder: false,
-  met_marcus: false,
-  knows_shrine_lore: false,
-  knows_betrayal_details: false,
-  refused_but_marked: false,
-  next_destination: ""
-};
-
-window.__gameVars = vars;
-
-function checkCondition(cond) {
-  if (!cond) return true;
-  if (cond.op === "and") return (cond.conds || []).every(function(c) { return checkCondition(c); });
-  if (cond.op === "or")  return (cond.conds || []).some(function(c) { return checkCondition(c); });
-  if (cond.op === "not") return !checkCondition(cond.cond);
-
-  var val = vars[cond.var];
-  switch (cond.op) {
-    case "==": return val === cond.value;
-    case "!=": return val !== cond.value;
-    case ">":  return Number(val) >  Number(cond.value);
-    case "<":  return Number(val) <  Number(cond.value);
-    case ">=": return Number(val) >= Number(cond.value);
-    case "<=": return Number(val) <= Number(cond.value);
-    default:   return false;
-  }
-}
-
-function applyEffects(effects) {
-  if (!effects || !Array.isArray(effects)) return;
-  for (var i = 0; i < effects.length; i++) {
-    var eff = effects[i];
-    if (!eff || !eff.var) continue;
-    switch (eff.action) {
-      case "set":
-        vars[eff.var] = eff.value;
-        break;
-      case "add":
-        vars[eff.var] = (typeof vars[eff.var] === "number" ? vars[eff.var] : 0) + (Number(eff.value) || 0);
-        break;
-      case "toggle":
-        vars[eff.var] = !vars[eff.var];
-        break;
-    }
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// INVENTORY SYSTEM (背包系统)
-// ═══════════════════════════════════════════════════════════════════════════
-var inventory = [];
-var _inventoryOpen = false;
-var _inventoryPanel = null;
-var _inventoryItems = [];
-
-function addToInventory(item) {
-  // Check for duplicates
-  for (var i = 0; i < inventory.length; i++) {
-    if (inventory[i].id === item.id) return;
-  }
-  inventory.push(item);
-  console.log('[背包] 获得: ' + item.name + ' — ' + item.desc);
-  // Flash inventory button
-  if (window._invBtnBg) {
-    window._invBtnBg.color = rgb(100, 255, 100);
-    setTimeout(function() { if (window._invBtnBg) window._invBtnBg.color = rgb(60, 60, 80); }, 800);
-  }
-  // Show toast
-  showToast('👜 获得物品: ' + item.name);
-}
-
-function toggleInventory() {
-  if (_inventoryOpen) { closeInventory(); }
-  else { openInventory(); }
-}
-
-function openInventory() {
-  if (_inventoryOpen) return;
-  _inventoryOpen = true;
-  closeJournal(); // close journal if open
-
-  _inventoryPanel = add([
-    rect(340, 320, { radius: 12 }),
-    color(15, 15, 30),
-    opacity(0.95),
-    pos(width()/2 - 170, 140),
-    outline(2, rgb(180, 160, 100)),
-    "inventory-panel"
-  ]);
-  ovSet('inv-title', width()/2 - 150, 155, '🎒 背包', 20, 'rgb(255,215,100)');
-  ovSet('inv-close', width()/2 + 60, 159, '按 I 关闭', 11, 'rgb(140,140,160)');
-
-  if (inventory.length === 0) {
-    ovSet('inv-empty', width()/2 - 130, 240, '（空 — 与他人对话获取物品）', 14, 'rgb(140,140,160)');
-  } else {
-    ovHide('inv-empty');
-    for (var i = 0; i < inventory.length; i++) {
-      var item = inventory[i];
-      var iy = 195 + i * 58;
-      ovSet('inv-item-name-' + i, width()/2 - 150, iy, item.icon + ' ' + item.name, 15, '#fff');
-      ovSet('inv-item-desc-' + i, width()/2 - 150, iy + 20, item.desc, 11, 'rgb(160,160,180)');
-      if (item.source) {
-        ovSet('inv-item-src-' + i, width()/2 - 150, iy + 36, '来源: ' + item.source, 10, 'rgb(120,120,140)');
+    },
+    /**
+     * 获取当前场景 ID
+     * @returns {string|null}
+     */
+    getCurrentSceneId() {
+      return currentSceneId;
+    },
+    /**
+     * 获取当前场景定义
+     * @returns {Object|null}
+     */
+    getCurrentScene() {
+      return currentScene || null;
+    },
+    /**
+     * 获取场景定义
+     * @param {string} sceneId
+     * @returns {Object|undefined}
+     */
+    getScene(sceneId) {
+      return SCENES2[sceneId];
+    },
+    /**
+     * 获取所有场景名称列表
+     * @returns {Array<{id, name}>}
+     */
+    getSceneList() {
+      return Object.keys(SCENES2).map((id) => ({
+        id,
+        name: SCENES2[id].name || id
+      }));
+    },
+    /**
+     * 淡入动画（用于标题画面等）
+     * @param {number} duration - 毫秒
+     */
+    fadeIn(duration = 500) {
+      overlay.style.transition = `opacity ${duration}ms ease`;
+      overlay.style.opacity = "0";
+    },
+    /**
+     * 淡出到黑
+     * @param {number} duration
+     * @param {Function} onComplete
+     */
+    fadeOut(duration = 500, onComplete) {
+      overlay.style.transition = `opacity ${duration}ms ease`;
+      overlay.style.opacity = "1";
+      overlay.style.background = "#0a0e1a";
+      if (onComplete) setTimeout(onComplete, duration);
+    },
+    /**
+     * 设置自定义渐变背景（临时覆盖场景背景）
+     * @param {string} gradientCSS - CSS gradient value
+     * @param {number} [duration=400]
+     */
+    setBackground(gradientCSS, duration = 400) {
+      bgLayer.style.transition = `background ${duration}ms ease`;
+      bgLayer.style.background = gradientCSS;
+    },
+    /**
+     * 重置到默认场景背景
+     */
+    resetBackground() {
+      if (currentScene) {
+        applyBackground(currentScene);
       }
+    },
+    /** 事件订阅 */
+    on(event, handler) {
+      if (!eventHandlers[event]) eventHandlers[event] = [];
+      eventHandlers[event].push(handler);
+      return () => {
+        eventHandlers[event] = (eventHandlers[event] || []).filter(
+          (h) => h !== handler
+        );
+      };
+    },
+    /**
+     * 清理 DOM 挂载
+     */
+    destroy() {
+      if (bgLayer.parentNode) bgLayer.parentNode.removeChild(bgLayer);
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      eventHandlers.length = 0;
+    }
+  };
+  const sceneIds = Object.keys(SCENES2);
+  if (sceneIds.length > 0) {
+    api.setScene(sceneIds[0]);
+  }
+  return api;
+}
+
+// core/SaveManager.js
+function SaveManager({ flags: flags2, storageKey = "starnight_save" }) {
+  const STORAGE_KEY = storageKey;
+  const MAX_SLOTS = 3;
+  function getStore() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
     }
   }
-}
-
-function closeInventory() {
-  _inventoryOpen = false;
-  destroyAll('inventory-panel');
-  _inventoryPanel = null;
-  ovDestroy('inv-title'); ovDestroy('inv-close'); ovDestroy('inv-empty');
-  for (var i = 0; i < 10; i++) {
-    ovDestroy('inv-item-name-' + i);
-    ovDestroy('inv-item-desc-' + i);
-    ovDestroy('inv-item-src-' + i);
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// QUEST JOURNAL (任务日志)
-// ═══════════════════════════════════════════════════════════════════════════
-var journal = [];
-var _journalOpen = false;
-
-function addToJournal(entry) {
-  journal.push(entry);
-  console.log('[日志] ' + entry.title);
-  if (window._jrnBtnBg) {
-    window._jrnBtnBg.color = rgb(100, 200, 255);
-    setTimeout(function() { if (window._jrnBtnBg) window._jrnBtnBg.color = rgb(60, 60, 80); }, 800);
-  }
-}
-
-function toggleJournal() {
-  if (_journalOpen) { closeJournal(); }
-  else { openJournal(); }
-}
-
-function openJournal() {
-  if (_journalOpen) return;
-  _journalOpen = true;
-  closeInventory();
-
-  add([rect(460, 360, { radius: 12 }), color(15, 15, 30), opacity(0.95), pos(width()/2 - 230, 120), outline(2, rgb(100, 180, 255)), "journal-panel"]);
-  ovSet('jrn-title', width()/2 - 210, 135, '📜 任务日志', 20, 'rgb(140,200,255)');
-  ovSet('jrn-close', width()/2 + 120, 139, '按 J 关闭', 11, 'rgb(140,140,160)');
-
-  if (journal.length === 0) {
-    ovSet('jrn-empty', width()/2 - 210, 220, '（暂无记录 — 完成对话后自动记录）', 14, 'rgb(140,140,160)');
-  } else {
-    ovHide('jrn-empty');
-    for (var i = 0; i < journal.length; i++) {
-      var entry = journal[i];
-      var jy = 175 + i * 65;
-      var statusIcon = entry.done ? '✅' : '📌';
-      ovSet('jrn-entry-title-' + i, width()/2 - 210, jy, statusIcon + ' ' + entry.title, 15, '#fff');
-      ovSet('jrn-entry-detail-' + i, width()/2 - 210, jy + 22, entry.detail, 11, 'rgb(160,180,200)');
-      ovSet('jrn-entry-time-' + i, width()/2 - 210, jy + 40, entry.time, 10, 'rgb(100,120,140)');
+  function writeStore(data) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch (e) {
+      console.error("[SaveManager] \u5199\u5165\u5B58\u50A8\u5931\u8D25:", e);
     }
   }
-}
-
-function closeJournal() {
-  _journalOpen = false;
-  destroyAll('journal-panel');
-  ovDestroy('jrn-title'); ovDestroy('jrn-close'); ovDestroy('jrn-empty');
-  for (var i = 0; i < 10; i++) {
-    ovDestroy('jrn-entry-title-' + i);
-    ovDestroy('jrn-entry-detail-' + i);
-    ovDestroy('jrn-entry-time-' + i);
+  function makeSaveData(currentNodeId, sceneId, sceneName, nodePreview) {
+    const snapshot = flags2.getSnapshot();
+    const affection = {
+      kael: snapshot.affection_kael || 0,
+      marcus: snapshot.affection_marcus || 0,
+      lyra: snapshot.affection_lyra || 0
+    };
+    const coreFlags = {
+      village_trust: snapshot.village_trust,
+      star_understanding: snapshot.star_understanding,
+      knew_previous: snapshot.knew_previous,
+      sided_with: snapshot.sided_with,
+      has_star_ember: snapshot.has_star_ember,
+      truth_revealed: snapshot.truth_revealed
+    };
+    return {
+      flags: coreFlags,
+      affection,
+      fullSnapshot: snapshot,
+      currentNodeId: currentNodeId || "",
+      sceneId: sceneId || "",
+      sceneName: sceneName || "",
+      nodePreview: nodePreview || "",
+      timestamp: Date.now(),
+      version: "2.0"
+    };
   }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// TOAST / FLOATING TEXT (选择后果可视化)
-// ═══════════════════════════════════════════════════════════════════════════
-var _toastId = 0;
-function showToast(msg) {
-  _toastId++;
-  var tid = 'toast-' + _toastId;
-  ovSet(tid, width()/2, 350, msg, 15, 'rgb(255,255,100)', { center: true });
-  var el = _ovEls[tid];
-  var start = Date.now();
-  function animToast() {
-    var elapsed = (Date.now() - start) / 1000;
-    var y = 350 - elapsed * 18;
-    var opacity = Math.max(0, 1 - elapsed / 2.0);
-    el.style.top = y + 'px';
-    el.style.opacity = opacity;
-    if (elapsed > 2.0) { ovDestroy(tid); return; }
-    requestAnimationFrame(animToast);
-  }
-  requestAnimationFrame(animToast);
-}
-
-function showConsequence(npcName, effects) {
-  if (!effects || !effects.length) return;
-  var lines = [];
-  for (var i = 0; i < effects.length; i++) {
-    var e = effects[i];
-    if (e.var && e.var.indexOf('affection_') === 0) {
-      var val = Number(e.value) || 0;
-      if (val > 0) lines.push('❤️ ' + npcName + ' 好感 +' + val);
-      else if (val < 0) lines.push('💔 ' + npcName + ' 好感 ' + val);
-    }
-  }
-  if (lines.length > 0) {
-    for (var j = 0; j < lines.length; j++) {
-      (function(msg, delay) {
-        setTimeout(function() { showToast(msg); }, delay);
-      })(lines[j], j * 400);
-    }
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// NPC DIALOGUE DATA — 3 scenes from game-data.js mapped to 3 NPCs
-// ═══════════════════════════════════════════════════════════════════════════
-
-var npcData = [
-  // ─────────────────────────────────────────────────────────────────
-  // NPC 0: 银发少女 莉拉 — scene_prologue (序章 · 醒来)
-  // ─────────────────────────────────────────────────────────────────
-  {
-    id: 0,
-    name: "莉拉",
-    title: "银发少女",
-    emoji: "🌙",
-    x: 150, y: 230,
-    color: [140, 200, 230],
-    // Rounds: array of round objects. Each round has lines[] and optional choices[]
-    rounds: [
-      // Round 0: Opening narration + Lyra intro → first choice
-      {
-        lines: [
-          { speaker: "narrator", text: "你从陌生的房间醒来。\n阳光透过木窗的缝隙洒在脸上，带着稻草和晨露的气息。\n窗外是一片你从未见过的紫色天空。\n\n头很沉。记忆像是被打碎的镜子——你能感觉到碎片的存在，却拼不出完整的画面。\n你记得自己的名字。但除此之外……一片空白。" },
-          { speaker: "narrator", text: "木门被轻轻推开。一个银发的少女站在门口，逆光中看不清表情。她手上端着一碗冒着热气的汤。" },
-          { speaker: "lyra", text: "你醒了。感觉怎么样？", effects: [{ action: "set", var: "met_lyra", value: true }] },
-          { speaker: "lyra", text: "你在森林边缘昏倒了。是村长把你抬回来的。已经睡了三天。" },
-          { speaker: "lyra", text: "她把汤放在你床边的木桌上，退后两步靠在门框上。似乎不打算靠近——但也没有离开的意思。\n\n「你的衣服是我换的。别多想——村里没有别人愿意碰一个满身是血的外来者。」" },
-          { speaker: "lyra", text: "你有很多问题吧。不过……先回答我一个问题：你来星落村，是偶然，还是有人在呼唤你？" }
-        ],
-        choices: [
-          {
-            text: "「我是听到了什么……在梦里。」",
-            effects: [
-              { action: "set", var: "origin", value: "called" },
-              { action: "add", var: "affection_lyra", value: 3 }
-            ],
-            nextRound: 1  // → called branch
-          },
-          {
-            text: "「只是偶然路过。我也不知道为什么。」",
-            effects: [
-              { action: "set", var: "origin", value: "accident" },
-              { action: "add", var: "affection_lyra", value: 1 }
-            ],
-            nextRound: 2  // → accident branch
-          },
-          {
-            text: "（沉默地盯着她，等待下文）",
-            effects: [
-              { action: "set", var: "origin", value: "silent" },
-              { action: "add", var: "affection_lyra", value: 2 }
-            ],
-            nextRound: 3  // → silent branch
-          }
-        ]
-      },
-      // Round 1: "called" branch
-      {
-        lines: [
-          { speaker: "lyra", text: "果然。她微微点头。和我一样。这座村子……它在找人。" },
-          { speaker: "lyra", text: "「三年前，我也听到了。在很远很远的地方——但那声音比任何东西都清晰。它说：'回来。'所以我来了。」", effects: [{ action: "set", var: "lyra_shared_origin", value: true }] }
-        ],
-        nextRound: 4  // → transition
-      },
-      // Round 2: "accident" branch
-      {
-        lines: [
-          { speaker: "lyra", text: "她看了你一眼，没有说话。但你知道——她不相信这个答案。" },
-          { speaker: "lyra", text: "她转过身去，声音里带着一丝不易察觉的失望。\n\n「没有谁是偶然来到这里的。星落村……它不在任何地图上。你找不到它——除非它想让你找到。」\n\n她顿了一下，补充道：「但如果你还没准备好承认……我理解。」", effects: [{ action: "set", var: "lyra_doubted_player", value: true }] }
-        ],
-        nextRound: 4
-      },
-      // Round 3: "silent" branch
-      {
-        lines: [
-          { speaker: "lyra", text: "她轻轻哼了一声。不回答也是一种回答。" },
-          { speaker: "lyra", text: "她抱起双臂，歪着头打量你。\n\n「沉默的人有两种：一种是什么都不知道，另一种是什么都知道了但不想说。你还站不稳——所以大概是第一种。」\n\n嘴角似乎动了一下。可能是个冷笑话。", effects: [{ action: "set", var: "lyra_observing_player", value: true }] }
-        ],
-        nextRound: 4
-      },
-      // Round 4: Transition to square
-      {
-        lines: [
-          { speaker: "lyra", text: "跟我来。村长在广场等你。记住——不要对他撒谎。他什么都看得出来。", effects: [{ action: "set", var: "heading_to_square", value: true }] }
-        ],
-        isFinal: true  // marks NPC as done, unlocks NPC 1
+  return {
+    /**
+     * 手动保存到指定槽位
+     * @param {number|string} slot - 1, 2, 3 或 'auto'
+     * @param {Object} context - 存档上下文
+     * @param {string} context.currentNodeId
+     * @param {string} context.sceneId
+     * @param {string} [context.sceneName]
+     * @param {string} [context.nodePreview] - 对话文本预览（前20字）
+     */
+    save(slot, context) {
+      if (slot === "auto") {
+        return this.autoSave(context);
       }
-    ]
-  },
-
-  // ─────────────────────────────────────────────────────────────────
-  // NPC 1: 村长 凯尔 — scene_village_square (村中广场)
-  // ─────────────────────────────────────────────────────────────────
-  {
-    id: 1,
-    name: "凯尔",
-    title: "村长",
-    emoji: "🧙",
-    x: 400, y: 230,
-    color: [200, 170, 110],
-    rounds: [
-      // Round 0: Square narration + Kael intro → first choice (accept quest)
-      {
-        lines: [
-          { speaker: "narrator", text: "广场中央有一棵巨大的古树，树冠几乎遮蔽了整个广场。\n树下站着一位白发老人，他正仰头望着树梢，仿佛在聆听什么。" },
-          { speaker: "elder_kael", text: "啊，你来了。他转过身，目光在你身上停留了片刻。我是凯尔。欢迎来到星落村，旅行者。", effects: [{ action: "set", var: "met_elder", value: true }] },
-          { speaker: "elder_kael", text: "通常不会有人误入这里。通往星落村的路……已经隐藏了很久。你身上，有神社的气息。" },
-          { speaker: "elder_kael", text: "他走近了几步，你能看清他脸上的皱纹——每一道都像是刻上去的年轮。他的眼睛很亮，不像一个老人该有的亮度。\n\n「这棵树，」他拍了拍古树的树干，「和我差不多老。它记得每一个来过这里的人。今天早上，它告诉我有人要来了。」" },
-          { speaker: "elder_kael", text: "但比你的来历更紧急的是——暗影正在扩散。东方森林里的神社，封印正在崩溃。我需要你的帮助。" }
-        ],
-        choices: [
-          {
-            text: "「告诉我详情。我能做什么？」",
-            effects: [
-              { action: "set", var: "quest", value: "accepted_eager" },
-              { action: "add", var: "affection_elder", value: 5 },
-              { action: "add", var: "affection_lyra", value: 2 }
-            ],
-            nextRound: 1
-          },
-          {
-            text: "「暗影？神社？你最好从头解释。」",
-            effects: [
-              { action: "set", var: "quest", value: "accepted_cautious" },
-              { action: "add", var: "affection_elder", value: 3 }
-            ],
-            nextRound: 2
-          },
-          {
-            text: "「我只是个过路人。这不关我的事。」",
-            effects: [
-              { action: "set", var: "quest", value: "refused_initial" },
-              { action: "add", var: "affection_lyra", value: -1 }
-            ],
-            nextRound: 3
-          }
-        ]
-      },
-      // Round 1: "eager" branch → lore follow-up
-      {
-        lines: [
-          { speaker: "elder_kael", text: "很好。凯尔眼中闪过一丝欣慰。六十年前，我们七个人加固了封印。现在……封印的每一道裂缝都在呼唤新的守护者。你就是其中之一。", effects: [{ action: "set", var: "kael_trusts_player", value: true }, { action: "add", var: "narrative_tension", value: 1 }] },
-          { speaker: "elder_kael", text: "他伸手按住你的肩膀。老人的手瘦削却有力。\n\n「我年轻时也像你这样——听到有人需要帮助，二话不说就去。那是我最好的品质，也是最坏的。」\n\n他停顿了一下，眼神暗了暗。\n\n「因为有时候，急着帮忙的人……会被利用。记住这一点。」", effects: [{ action: "set", var: "kael_gave_warning", value: true }, { action: "add", var: "affection_elder", value: 3 }] }
-        ],
-        nextRound: 4  // → second choice
-      },
-      // Round 2: "cautious" branch → lore follow-up
-      {
-        lines: [
-          { speaker: "elder_kael", text: "谨慎是好事。凯尔微微颔首。听好了——这不是普通的野兽或强盗。暗影是古老的怨念，只会被神社的光芒驱散。但光芒正在消退。", effects: [{ action: "add", var: "narrative_tension", value: 2 }] },
-          { speaker: "elder_kael", text: "他在古树下的石凳上坐下，示意你也坐。\n\n「六十年前，封印暗影的时候，我们以为它会永远沉睡。但我们错了。怨念这种东西……不会消失，只会积累。就像这棵树的年轮。」\n\n他抬头看着树冠，声音变得更低。\n\n「封印不是永久方案。它只是……争取时间。现在时间到了。」", effects: [{ action: "set", var: "kael_explained_history", value: true }, { action: "add", var: "affection_elder", value: 2 }] }
-        ],
-        nextRound: 4
-      },
-      // Round 3: "refused" branch → Lyra intervenes
-      {
-        lines: [
-          { speaker: "lyra", text: "不关你的事？莉拉冷笑了一声。那你为什么会在村口昏倒？为什么你身上带着神社的印记？她指了指你手腕上的淡淡光纹——你之前完全没注意到。" },
-          { speaker: "elder_kael", text: "够了，莉拉。凯尔抬手制止了她。强迫的帮助不是帮助。旅行者，如果你改变主意，我就在这棵树下。", effects: [{ action: "set", var: "refused_but_marked", value: true }, { action: "set", var: "has_shrine_mark", value: true }] },
-          { speaker: "elder_kael", text: "他转过身准备离开，但走了两步又停下。\n\n「你知道吗，旅行者？」他没有回头。「六十年前，也有一个人说了同样的话：'这不关我的事。'后来他回来了——在一切都太迟了之后。」\n\n「我希望你不用等到那天。」", effects: [{ action: "set", var: "kael_told_cautionary_tale", value: true }, { action: "add", var: "narrative_tension", value: 3 }] }
-        ],
-        nextRound: 4
-      },
-      // Round 4: Second choice — where to go next
-      {
-        lines: [
-          { speaker: "elder_kael", text: "神社在森林深处，过了低语桥就是。但你需要做好准备——去找马库斯，村中的铁匠。他能给你合适的武器。", effects: [{ action: "set", var: "objective", value: "visit_blacksmith" }, { action: "set", var: "has_shrine_mark", value: true }] }
-        ],
-        choices: [
-          {
-            text: "「好，我去找铁匠。」",
-            effects: [{ action: "set", var: "next_destination", value: "blacksmith" }],
-            nextRound: 5
-          },
-          {
-            text: "「等一下，我想先了解更多关于神社的事。」",
-            effects: [{ action: "add", var: "affection_elder", value: 2 }],
-            nextRound: 6
-          },
-          {
-            text: "「（看向莉拉）你也会去吗？」",
-            effects: [{ action: "add", var: "affection_lyra", value: 2 }],
-            nextRound: 7
-          }
-        ]
-      },
-      // Round 5: "go to blacksmith" direct
-      {
-        lines: [
-          { speaker: "elder_kael", text: "愿光芒指引你的道路。" }
-        ],
-        isFinal: true
-      },
-      // Round 6: "ask about shrine" lore
-      {
-        lines: [
-          { speaker: "elder_kael", text: "神社……是古代一位守护者建造的，用来镇压暗影的本源。但那位守护者最终被最信任的人背叛，她的怨念化作了暗影本身。封印不是囚禁——是让她安息。但现在，封印正在破裂。", effects: [{ action: "set", var: "knows_shrine_lore", value: true }, { action: "set", var: "next_destination", value: "blacksmith" }] },
-          { speaker: "elder_kael", text: "他的声音变得更轻，像是在自言自语。\n\n「背叛……是人类最古老的武器。那个守护者把后背交给了她最信任的人——她的恋人和她的兄弟。两个人都参加了封印仪式。但仪式完成后……他们在她转身的瞬间，将仪式之刃刺入了她的心脏。」\n\n「他们说，是为了防止她变成暗影。但谁知道真相呢？六百年前的真相，只剩下这棵树的记忆了。」", effects: [{ action: "set", var: "knows_betrayal_details", value: true }, { action: "add", var: "narrative_tension", value: 3 }] }
-        ],
-        isFinal: true
-      },
-      // Round 7: "ask about Lyra"
-      {
-        lines: [
-          { speaker: "lyra", text: "当然。她难得地露出一丝笑容。我等你三年了，不差这一个小时。", effects: [{ action: "set", var: "lyra_will_accompany", value: true }, { action: "set", var: "next_destination", value: "blacksmith" }] },
-          { speaker: "lyra", text: "她走到你身边，声音低得只有你能听见。\n\n「三年前我独自走过那座桥。」她的手指不自觉地攥紧了袖口。「差点没回来。所以这一次——两个人，应该会好一点。」\n\n她没有看你的眼睛。但你看到了她攥紧的指节。", effects: [{ action: "set", var: "lyra_admitted_past", value: true }, { action: "add", var: "affection_lyra", value: 3 }] }
-        ],
-        isFinal: true
+      const numSlot = parseInt(slot, 10);
+      if (isNaN(numSlot) || numSlot < 1 || numSlot > MAX_SLOTS) {
+        console.warn(`[SaveManager] \u65E0\u6548\u5B58\u6863\u4F4D: ${slot}`);
+        return false;
       }
-    ]
-  },
-
-  // ─────────────────────────────────────────────────────────────────
-  // NPC 2: 铁匠 马库斯 — scene_blacksmith (铁匠铺)
-  // ─────────────────────────────────────────────────────────────────
-  {
-    id: 2,
-    name: "马库斯",
-    title: "铁匠",
-    emoji: "⚒️",
-    x: 650, y: 230,
-    color: [230, 115, 75],
-    rounds: [
-      // Round 0: Blacksmith narration + Marcus intro → weapon choice
-      {
-        lines: [
-          { speaker: "narrator", text: "铁锤敲击铁砧的声音从远处就能听到。铺子里热浪扑面，炉火映红了四壁。一个魁梧的男人正抡着铁锤，汗水顺着背脊流下。" },
-          { speaker: "marcus", text: "哈！又一个被凯尔忽悠来的？马库斯头也不抬，手上的铁锤不停。行，我看看——你需要一把剑，还是斧子？", effects: [{ action: "set", var: "met_marcus", value: true }] },
-          { speaker: "marcus", text: "等等……他停下锤子，仔细打量了你一番。你身上有神社的气息。不是普通人。凯尔那老头这次没选错。" },
-          { speaker: "marcus", text: "他把铁锤搁在砧板上，擦了擦手上的汗。炉火在他身后跳动，把他的影子投在墙上——一个巨大的、不停晃动的黑影。\n\n「知道吗？上一次有人带着神社气息走进这个铺子，是六十年前。我老爹接待的。后来他死了。」\n\n他顿了顿，咧嘴一笑——但那笑容不达眼底。\n\n「不过别担心。我老爹的武器可没死。」" }
-        ],
-        choices: [
-          {
-            text: "「给我一把剑。轻便、锋利。」",
-            effects: [
-              { action: "set", var: "weapon", value: "sword" },
-              { action: "set", var: "weapon_desc", value: "银刃长剑——对暗影生物有额外杀伤" },
-              { action: "add", var: "affection_marcus", value: 2 }
-            ],
-            nextRound: 1
-          },
-          {
-            text: "「我需要一面盾牌。防御比进攻更重要。」",
-            effects: [
-              { action: "set", var: "weapon", value: "shield" },
-              { action: "set", var: "weapon_desc", value: "古木护盾——能反弹暗影的低语" },
-              { action: "add", var: "affection_marcus", value: 1 }
-            ],
-            nextRound: 2
-          },
-          {
-            text: "「我不需要武器。光靠双手就够了。」",
-            effects: [
-              { action: "set", var: "weapon", value: "none" },
-              { action: "set", var: "weapon_desc", value: "空手——但神社的光芒会是你真正的武器" },
-              { action: "add", var: "affection_marcus", value: 3 }
-            ],
-            nextRound: 3
-          }
-        ]
-      },
-      // Round 1: "sword" branch
-      {
-        lines: [
-          { speaker: "marcus", text: "好眼光！他从墙上的剑架上取下一柄剑，剑身在炉火下泛着银光。这是我父亲铸造的最后一把武器——银刃剑。对一般敌人只是锋利，但对暗影……它比什么都管用。", effects: [{ action: "set", var: "has_special_weapon", value: true }] },
-          { speaker: "marcus", text: "他把剑递给你时，手微微抖了一下。\n\n「这把剑……我老爹铸了整整三个月。他死后，我把剑从废墟里找回来的时候，剑身还是温热的。」\n\n马库斯深吸一口气。\n\n「暗影怕的不是剑。是铸剑的人留在剑里的一口气。所以——别辜负它。」", effects: [{ action: "add", var: "affection_marcus", value: 3 }, { action: "set", var: "marcus_shared_sword_lore", value: true }] }
-        ],
-        nextRound: 4
-      },
-      // Round 2: "shield" branch
-      {
-        lines: [
-          { speaker: "marcus", text: "聪明。马库斯从角落里翻出一面看起来古老但结实的木盾。这面盾是用神社古树的枝条编的。暗影的低语碰到它会反弹——你可以在靠近神社的时候保护自己。", effects: [{ action: "set", var: "has_special_weapon", value: true }] },
-          { speaker: "marcus", text: "他把盾翻过来，背面刻着一行小字。\n\n「'守护，而非伤害。'这是我老爹刻的。他觉得最好的武器不是杀人的——是让人不用被杀的。」\n\n马库斯哼了一声。\n\n「天真。但也不全错。」", effects: [{ action: "add", var: "affection_marcus", value: 2 }, { action: "set", var: "marcus_shared_shield_lore", value: true }] }
-        ],
-        nextRound: 4
-      },
-      // Round 3: "none" branch
-      {
-        lines: [
-          { speaker: "marcus", text: "他愣了一下，然后放声大笑。哈哈哈！有种！但随即收敛笑容，压低声音。听着，小子。我父亲就是空手面对暗影死的。不是勇敢的问题——是愚蠢。" },
-          { speaker: "marcus", text: "他转过身在架子上翻了一会儿，拿出一个小布袋。\n\n「拿着。」他把它塞进你手里。里面是三颗泛着微光的石子。「神社的护符碎片。不值钱，但能在暗影靠近的时候发烫。比空手强。」\n\n他不再看你，重新拿起了铁锤。\n\n「……走吧。趁我还没后悔。」", effects: [{ action: "set", var: "has_lantern", value: true }, { action: "set", var: "marcus_gave_charm", value: true }, { action: "add", var: "affection_marcus", value: 4 }] }
-        ],
-        nextRound: 4
-      },
-      // Round 4: Warning + departure
-      {
-        lines: [
-          { speaker: "marcus", text: "……算了。他背过身去，声音低了下来。不管你带什么去，记住一句话：暗影不会攻击你的身体，它攻击你的心。它会让你看到你最怕的东西。", effects: [{ action: "set", var: "marcus_warning_given", value: true }, { action: "add", var: "narrative_tension", value: 2 }] },
-          { speaker: "marcus", text: "好了，别磨蹭了。神社在等你——我能感觉到。天色越暗，暗影越强。现在出发，你还能在天黑前到达。", effects: [{ action: "set", var: "ready_to_depart", value: true }] }
-        ],
-        isFinal: true
+      const store = getStore();
+      store[String(numSlot)] = makeSaveData(
+        context.currentNodeId,
+        context.sceneId,
+        context.sceneName,
+        context.nodePreview
+      );
+      writeStore(store);
+      return true;
+    },
+    /**
+     * 从指定槽位读取存档
+     * @param {number|string} slot
+     * @returns {Object|null} 存档数据或 null
+     */
+    load(slot) {
+      const store = getStore();
+      const data = store[String(slot)];
+      if (!data) return null;
+      if (data.fullSnapshot) {
+        flags2.restoreSnapshot(data.fullSnapshot);
+      } else if (data.flags) {
+        Object.keys(data.flags).forEach((k) => {
+          flags2.setFlag(k, data.flags[k]);
+        });
+        if (data.affection) {
+          Object.keys(data.affection).forEach((charId) => {
+            const key = "affection_" + charId;
+            flags2.setFlag(key, data.affection[charId]);
+          });
+        }
       }
-    ]
-  }
-];
-
-// ═══════════════════════════════════════════════════════════════════════════
-// GAME STATE
-// ═══════════════════════════════════════════════════════════════════════════
-
-var state = {
-  activeNpc: null,        // which NPC is currently speaking (0,1,2) or null
-  typing: false,
-  typeActive: 0,          // unique typing session id
-  showChoices: false,
-  done: [false, false, false],      // NPC fully completed
-  npcUnlocked: [true, false, false], // which NPCs are accessible
-  round: [0, 0, 0],                // current round index for each NPC
-  currentLineIdx: [0, 0, 0],       // which line within the current round
-  allDone: false
-};
-
-window.__gameState = state;
-
-// ═══════════════════════════════════════════════════════════════════════════
-// HELPER: get current choices for active NPC
-// ═══════════════════════════════════════════════════════════════════════════
-function currentChoices() {
-  var idx = state.activeNpc;
-  if (idx === null) return null;
-  var d = npcData[idx];
-  var r = state.round[idx];
-  var round = d.rounds[r];
-  return round ? round.choices : null;
+      return data;
+    },
+    /**
+     * 自动存档 (slot: 'auto')
+     * @param {Object} context
+     */
+    autoSave(context) {
+      const store = getStore();
+      store["auto"] = makeSaveData(
+        context.currentNodeId,
+        context.sceneId,
+        context.sceneName,
+        context.nodePreview
+      );
+      writeStore(store);
+      return true;
+    },
+    /**
+     * 获取所有存档位列表（含缩略信息）
+     * @returns {Array<{slot: string, timestamp: number, sceneName: string, nodePreview: string, exists: boolean}>}
+     */
+    getSaveList() {
+      const store = getStore();
+      const list = [];
+      for (let i = 1; i <= MAX_SLOTS; i++) {
+        const data = store[String(i)];
+        list.push({
+          slot: String(i),
+          exists: !!data,
+          timestamp: data ? data.timestamp : 0,
+          sceneName: data ? data.sceneName || "\u672A\u77E5\u573A\u666F" : "",
+          nodePreview: data ? (data.nodePreview || "").slice(0, 30) : "",
+          affection: data ? data.affection : null,
+          currentNodeId: data ? data.currentNodeId : null,
+          sceneId: data ? data.sceneId : null
+        });
+      }
+      const auto = store["auto"];
+      list.push({
+        slot: "auto",
+        label: "\u81EA\u52A8\u5B58\u6863",
+        exists: !!auto,
+        timestamp: auto ? auto.timestamp : 0,
+        sceneName: auto ? auto.sceneName || "\u672A\u77E5\u573A\u666F" : "",
+        nodePreview: auto ? (auto.nodePreview || "").slice(0, 30) : "",
+        affection: auto ? auto.affection : null,
+        currentNodeId: auto ? auto.currentNodeId : null,
+        sceneId: auto ? auto.sceneId : null
+      });
+      return list;
+    },
+    /**
+     * 删除指定存档
+     * @param {number|string} slot
+     */
+    deleteSave(slot) {
+      const store = getStore();
+      delete store[String(slot)];
+      writeStore(store);
+    },
+    /**
+     * 格式化时间戳
+     * @param {number} ts
+     * @returns {string}
+     */
+    formatTimestamp(ts) {
+      if (!ts) return "\u2014";
+      const d = new Date(ts);
+      const pad = (n) => String(n).padStart(2, "0");
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(
+        d.getDate()
+      )} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    },
+    /**
+     * 清除所有存档
+     */
+    clearAll() {
+      localStorage.removeItem(STORAGE_KEY);
+    },
+    /**
+     * 检查指定槽位是否有存档
+     * @param {number|string} slot
+     * @returns {boolean}
+     */
+    hasSave(slot) {
+      const store = getStore();
+      return !!store[String(slot)];
+    }
+  };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// TYPEWRITER — now updates DOM overlay instead of Kaboom text
-//
-// Headless-safe design (3 paths):
-//   1. __skipTypewriter === true  →  show full text immediately (no animation)
-//   2. Headless detected          →  setTimeout() recursion (no Kaboom loop())
-//   3. Headed (normal)            →  Kaboom loop() for smooth animation
-// ═══════════════════════════════════════════════════════════════════════════
-var _typeIdCounter = 0;
-var _TYPEWRITER_SPEED = 0.04; // seconds per character (40ms) — headed mode
-var _TYPEWRITER_SPEED_HEADLESS = 0.008; // seconds per character (8ms) — headless: faster to compensate for timer throttling
-
-function typeText(lines, onDone) {
-  _typeIdCounter++;
-  var myId = _typeIdCounter;
-  state.typeActive = myId;
-  state.typing = true;
-  state.showChoices = false;
-  clearAllChoices();
-
-  var lineIdx = 0, charIdx = 0, display = "";
-
-  // Update speaker name from the first line
-  if (lines.length > 0) {
-    // Auto-detect speaker from first line pattern 【名称】
-    var firstLine = lines[0];
-    var speakerMatch = firstLine.match(/^【(.+?)】/);
-    if (speakerMatch) {
-      setSpeakerName(speakerMatch[1]);
-    }
+// core/DialogueEngine.js
+function DialogueEngine({ flags: flags2 }) {
+  const nodeMap = /* @__PURE__ */ new Map();
+  let currentNode = null;
+  let currentNodeId = null;
+  let typingBuffer = "";
+  let typingIndex = 0;
+  let typingActive = false;
+  let typingSpeed = 50;
+  let typingTimer = null;
+  const eventHandlers = {};
+  function on(event, handler) {
+    if (!eventHandlers[event]) eventHandlers[event] = [];
+    eventHandlers[event].push(handler);
+    return () => {
+      eventHandlers[event] = (eventHandlers[event] || []).filter(
+        (h) => h !== handler
+      );
+    };
   }
-
-  // ── PATH 1: Skip typewriter entirely (for testing / fast-forward) ──
-  if (window.__skipTypewriter) {
-    console.log('[typewriter] __skipTypewriter=true — showing full text immediately');
-    display = lines.join('\n');
-    ovHtml('dialog-text', display.replace(/\n/g, '<br>'));
-    state.typeActive = 0;
-    state.typing = false;
-    if (onDone) onDone();
-    return;
-  }
-
-  // ── PATH 2: Headless setTimeout — no Kaboom loop() dependency ──
-  var isHeadless = window.__HEADLESS_PRE_PATCH || false;
-  if (isHeadless) {
-    console.log('[typewriter] headless mode — using setTimeout ticker (no Kaboom loop)');
-
-    window.__twDebug = { ticks: 0, lineIdx: 0, charIdx: 0, lastErr: null };
-
-    function tick() {
-      window.__twDebug.ticks++;
-      window.__twDebug.lineIdx = lineIdx;
-      window.__twDebug.charIdx = charIdx;
+  function emit(event, data) {
+    (eventHandlers[event] || []).forEach((h) => {
       try {
-        if (state.typeActive !== myId) { console.log('[tw] state.typeActive mismatch:', state.typeActive, 'vs', myId); return; }
-        if (lineIdx >= lines.length) {
-          console.log('[tw] DONE — all lines typed');
-          state.typeActive = 0;
-          state.typing = false;
-          ovHtml('dialog-text', display.replace(/\n/g, '<br>'));
-          if (onDone) onDone();
-          return;
-        }
-        var cur = lines[lineIdx];
-        if (charIdx < cur.length) {
-          display += cur[charIdx];
-          charIdx++;
-          ovHtml('dialog-text', display.replace(/\n/g, '<br>') + '<span style="color:#ccc">▌</span>');
-        } else {
-          if (lineIdx < lines.length - 1) display += "\n";
-          lineIdx++;
-          charIdx = 0;
-          ovHtml('dialog-text', display.replace(/\n/g, '<br>') + '<span style="color:#ccc">▌</span>');
-        }
-      } catch(e) {
-        window.__twDebug.lastErr = e.message;
-        console.error('[tw] tick error:', e.message);
+        h(data);
+      } catch (e) {
+        console.error(`[DialogueEngine] \u4E8B\u4EF6\u5904\u7406\u5668\u9519\u8BEF (${event}):`, e);
       }
-      setTimeout(tick, Math.round(_TYPEWRITER_SPEED_HEADLESS * 1000));
-    }
-    setTimeout(tick, 0);
-    return;
+    });
   }
-
-  // ── PATH 3: Standard Kaboom loop() for headed environments ──
-  loop(_TYPEWRITER_SPEED, function() {
-    if (state.typeActive !== myId) return;
-    if (lineIdx >= lines.length) {
-      state.typeActive = 0;
-      state.typing = false;
-      // Show final text in overlay
-      ovHtml('dialog-text', display.replace(/\n/g, '<br>'));
-      if (onDone) onDone();
+  function tickTyping() {
+    if (typingIndex < typingBuffer.length) {
+      const ch = typingBuffer[typingIndex];
+      typingIndex++;
+      emit("typingChar", {
+        char: ch,
+        progress: typingIndex / typingBuffer.length,
+        fullText: typingBuffer
+      });
+    }
+    if (typingIndex >= typingBuffer.length) {
+      stopTyping();
+    }
+  }
+  function startTyping(text) {
+    stopTyping();
+    typingBuffer = text || "";
+    typingIndex = 0;
+    typingActive = true;
+    typingTimer = setInterval(tickTyping, typingSpeed);
+    emit("typingChar", {
+      char: "",
+      progress: 0,
+      fullText: typingBuffer
+    });
+  }
+  function stopTyping() {
+    if (typingTimer) {
+      clearInterval(typingTimer);
+      typingTimer = null;
+    }
+    typingActive = false;
+    typingIndex = typingBuffer.length;
+  }
+  function applyEffects(effects) {
+    if (!effects || typeof effects !== "object") return;
+    const affChanges = [];
+    Object.keys(effects).forEach((k) => {
+      const val = effects[k];
+      if (k.startsWith("affection_")) {
+        const charId = k.replace("affection_", "");
+        if (typeof val === "number") {
+          const newVal = flags2.addAffection(charId, val);
+          affChanges.push({ charId, delta: val, newVal });
+        }
+      } else {
+        flags2.setFlag(k, val);
+      }
+    });
+    return affChanges;
+  }
+  function enterNode(node) {
+    if (!node) {
+      console.warn("[DialogueEngine] enterNode: \u8282\u70B9\u4E3A\u7A7A");
       return;
     }
-    var cur = lines[lineIdx];
-    if (charIdx < cur.length) {
-      display += cur[charIdx];
-      charIdx++;
-      ovHtml('dialog-text', display.replace(/\n/g, '<br>') + '<span style="color:#ccc">▌</span>');
-    } else {
-      if (lineIdx < lines.length - 1) display += "\n";
-      lineIdx++;
-      charIdx = 0;
-      ovHtml('dialog-text', display.replace(/\n/g, '<br>') + '<span style="color:#ccc">▌</span>');
+    currentNode = node;
+    currentNodeId = node.id;
+    if (node.effect) {
+      applyEffects(node.effect);
     }
-  });
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// CHOICE UI — DOM overlay (with Kaboom rects for hit detection)
-// ═══════════════════════════════════════════════════════════════════════════
-var _choiceBoxes = [];
-var _choiceRects = []; // Kaboom rect game objects
-
-function showChoices(choices) {
-  if (state.showChoices) return;
-  clearAllChoices();
-  state.showChoices = true;
-
-  var count = choices.length;
-  var boxW = count === 3 ? 230 : 340;
-  var startX = count === 3 ? 20 : 40;
-  var gap = count === 3 ? 250 : 380;
-  var labels = ["A", "B", "C"];
-
-  for (var i = 0; i < count; i++) {
-    var cx = startX + i * (boxW + 10);
-    // Kaboom rect for hit detection
-    var rectId = 'choice-rect-' + i;
-    var rectObj = add([
-      rect(boxW, 42, { radius: 8 }),
-      color(50, 60, 100),
-      pos(cx, 525),
-      area(),
-      outline(2, rgb(150, 180, 255)),
-      rectId
-    ]);
-    _choiceRects.push({ id: rectId, go: rectObj, idx: i });
-
-    // DOM text overlay for choice text
-    var html = '<b>' + labels[i] + '.</b> ' + choices[i].text;
-    var fontSize = count === 3 ? 13 : 15;
-    ovSet('choice-txt-' + i, cx + 12, 532, html, fontSize, '#fff', { width: boxW - 20 });
-    _ovEls['choice-txt-' + i].classList.add('ov-choice');
-    _ovEls['choice-txt-' + i].style.height = '34px';
-    _ovEls['choice-txt-' + i].style.lineHeight = '20px';
-    _choiceBoxes.push({ id: 'choice-txt-' + i });
-  }
-}
-
-function clearAllChoices() {
-  state.showChoices = false;
-  for (var i = 0; i < _choiceBoxes.length; i++) {
-    ovDestroy(_choiceBoxes[i].id);
-  }
-  _choiceBoxes = [];
-  for (var j = 0; j < _choiceRects.length; j++) {
-    destroy(_choiceRects[j].go);
-  }
-  _choiceRects = [];
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// SPEAKER NAME DISPLAY — DOM overlay
-// ═══════════════════════════════════════════════════════════════════════════
-
-function setSpeakerName(displayName) {
-  if (displayName) {
-    ovSet('speaker-name', 50, 415, displayName, 14, 'rgb(255,215,140)', { speaker: true });
-  } else {
-    ovHide('speaker-name');
-  }
-}
-
-function clearSpeakerName() {
-  ovHide('speaker-name');
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// SPEAKER COLOR MAP (from game-data.js CHARACTERS)
-// ═══════════════════════════════════════════════════════════════════════════
-var speakerColors = {
-  "narrator":   [170, 170, 170],
-  "lyra":       [140, 200, 230],
-  "elder_kael": [200, 170, 110],
-  "marcus":     [230, 115, 75]
-};
-
-var speakerNames = {
-  "narrator":   { name: "旁白", title: "" },
-  "lyra":       { name: "莉拉", title: "银发少女" },
-  "elder_kael": { name: "凯尔", title: "村长" },
-  "marcus":     { name: "马库斯", title: "铁匠" }
-};
-
-// ═══════════════════════════════════════════════════════════════════════════
-// NPC CONVERSATION ENGINE
-// ═══════════════════════════════════════════════════════════════════════════
-function startNpcConversation(idx) {
-  if (state.typing) return;
-  if (state.done[idx]) return;
-  if (state.activeNpc !== null && state.activeNpc !== idx) return;
-  if (!state.npcUnlocked[idx]) return;
-
-  state.activeNpc = idx;
-  var d = npcData[idx];
-  var r = state.round[idx];
-  var round = d.rounds[r];
-  if (!round) return;
-
-  // Highlight active NPC
-  for (var i = 0; i < 3; i++) {
-    if (window._npcGlow[i]) window._npcGlow[i].opacity = (i === idx) ? 0.35 : 0;
-  }
-
-  playRound(idx, round);
-}
-
-function playRound(idx, round) {
-  var d = npcData[idx];
-
-  // Build display lines: each line prefixed with speaker info for the typewriter
-  var displayLines = [];
-  var totalEffects = [];
-
-  for (var i = 0; i < round.lines.length; i++) {
-    var ln = round.lines[i];
-    var sp = speakerNames[ln.speaker] || { name: ln.speaker, title: "" };
-    // Show speaker name before their line
-    displayLines.push("【" + (sp.title ? sp.title + " · " : "") + sp.name + "】");
-    displayLines.push(ln.text);
-    if (ln.effects) {
-      totalEffects.push.apply(totalEffects, ln.effects);
+    if (node.scene) {
+      emit("sceneChange", node.scene);
     }
-  }
-
-  // Apply effects from all lines
-  applyEffects(totalEffects);
-
-  // ── INVENTORY: detect items from line effects ──
-  for (var ei = 0; ei < totalEffects.length; ei++) {
-    var eff = totalEffects[ei];
-    if (eff.action === 'set' && eff.var === 'has_shrine_mark' && eff.value === true) {
-      addToInventory({ id: 'shrine_mark', name: '神社印记', desc: '手腕上的淡淡光纹——你被选中的证明。', icon: '✨', source: '凯尔' });
-    }
-    if (eff.action === 'set' && eff.var === 'has_special_weapon' && eff.value === true) {
-      if (vars.weapon === 'sword') {
-        addToInventory({ id: 'sword', name: '银刃长剑', desc: '对暗影生物有额外杀伤。马库斯父亲的遗作。', icon: '⚔️', source: '马库斯' });
-      } else if (vars.weapon === 'shield') {
-        addToInventory({ id: 'shield', name: '古木护盾', desc: '用神社古树枝条编织，能反弹暗影低语。', icon: '🛡️', source: '马库斯' });
-      }
-    }
-    if (eff.action === 'set' && eff.var === 'has_lantern' && eff.value === true) {
-      addToInventory({ id: 'charm', name: '神社护符碎片', desc: '三颗泛着微光的石子。暗影靠近时会发烫。', icon: '💎', source: '马库斯' });
-    }
-  }
-
-  // Play the lines
-  var allLines = flattenDisplayLines(displayLines);
-
-  typeText(allLines, function() {
-    // After typing done, show choices if any
-    if (round.choices) {
-      showChoices(round.choices);
-      setSpeakerName("");
-    } else if (round.isFinal) {
-      // Mark NPC done
-      state.done[idx] = true;
-      state.activeNpc = null;
-      if (window._npcGlow[idx]) window._npcGlow[idx].opacity = 0;
-      if (window._npcBadges[idx]) window._npcBadges[idx].opacity = 1;
-
-      // ── JOURNAL: NPC conversation complete ──
-      addToJournal({
-        title: '✅ 与' + npcData[idx].name + '对话完成',
-        detail: npcData[idx].title + ' — 获得了指引',
-        time: new Date().toLocaleTimeString(),
-        done: true
-      });
-
-      // Unlock next NPC
-      if (idx + 1 < 3) {
-        state.npcUnlocked[idx + 1] = true;
-        if (window._npcLockIcons[idx + 1]) window._npcLockIcons[idx + 1].opacity = 0;
-        ovHtml('dialog-text', '（对话结束）' + npcData[idx + 1].title + ' ' + npcData[idx + 1].name + ' 已解锁 ▍');
-      } else {
-        ovHtml('dialog-text', '（对话结束）序幕完成 ▍');
-      }
-
-      clearSpeakerName();
-      checkAllDone();
-    } else if (round.nextRound !== undefined) {
-      // Auto-advance to next round
-      state.round[idx] = round.nextRound;
-      ovHtml('dialog-text', '');
-      clearSpeakerName();
-
-      // ── CONSEQUENCE: show affection changes from line effects ──
-      if (totalEffects.length > 0) {
-        showConsequence(npcData[idx].name, totalEffects);
-      }
-      // Small delay before auto-playing next round
-      setTimeout(function() {
-        if (state.activeNpc === idx && !state.typing) {
-          startNpcConversation(idx);
-        }
-      }, 600);
-    } else {
-      // No choices, not final, no nextRound → done with this NPC
-      state.done[idx] = true;
-      state.activeNpc = null;
-      if (window._npcGlow[idx]) window._npcGlow[idx].opacity = 0;
-      if (window._npcBadges[idx]) window._npcBadges[idx].opacity = 1;
-
-      // ── JOURNAL: NPC conversation complete ──
-      addToJournal({
-        title: '✅ 与' + npcData[idx].name + '对话完成',
-        detail: npcData[idx].title + ' — 获得了指引',
-        time: new Date().toLocaleTimeString(),
-        done: true
-      });
-
-      if (idx + 1 < 3) {
-        state.npcUnlocked[idx + 1] = true;
-        if (window._npcLockIcons[idx + 1]) window._npcLockIcons[idx + 1].opacity = 0;
-        ovHtml('dialog-text', '（对话结束）' + npcData[idx + 1].title + ' ' + npcData[idx + 1].name + ' 已解锁 ▍');
-      } else {
-        ovHtml('dialog-text', '（对话结束）序幕完成 ▍');
-      }
-      clearSpeakerName();
-      checkAllDone();
-    }
-  });
-}
-
-function flattenDisplayLines(displayLines) {
-  var result = [];
-  for (var i = 0; i < displayLines.length; i++) {
-    var line = displayLines[i];
-    var parts = line.split("\n");
-    for (var j = 0; j < parts.length; j++) {
-      result.push(parts[j]);
-    }
-  }
-  return result;
-}
-
-function selectChoice(idx, choiceN) {
-  if (!state.showChoices || state.typing) return;
-  if (state.activeNpc !== idx) return;
-
-  var round = npcData[idx].rounds[state.round[idx]];
-  if (!round || !round.choices) return;
-  if (choiceN >= round.choices.length) return;
-
-  var choice = round.choices[choiceN];
-
-  // Apply choice effects
-  applyEffects(choice.effects || []);
-
-  // ── CONSEQUENCE VISUALIZATION ──
-  var npcName = npcData[idx].name;
-  showConsequence(npcName, choice.effects || []);
-
-  // ── INVENTORY: auto-detect item acquisition from effects ──
-  if (choice.effects) {
-    for (var ei = 0; ei < choice.effects.length; ei++) {
-      var eff = choice.effects[ei];
-      if (eff.action === 'set' && eff.var === 'has_special_weapon' && eff.value === true) {
-        if (vars.weapon === 'sword') {
-          addToInventory({ id: 'sword', name: '银刃长剑', desc: '对暗影生物有额外杀伤。马库斯父亲的遗作。', icon: '⚔️', source: '马库斯' });
-        } else if (vars.weapon === 'shield') {
-          addToInventory({ id: 'shield', name: '古木护盾', desc: '用神社古树枝条编织，能反弹暗影低语。', icon: '🛡️', source: '马库斯' });
-        }
-      }
-      if (eff.action === 'set' && eff.var === 'has_lantern' && eff.value === true) {
-        addToInventory({ id: 'charm', name: '神社护符碎片', desc: '三颗泛着微光的石子。暗影靠近时会发烫。', icon: '💎', source: '马库斯' });
-      }
-      if (eff.action === 'set' && eff.var === 'has_shrine_mark' && eff.value === true) {
-        addToInventory({ id: 'shrine_mark', name: '神社印记', desc: '手腕上的淡淡光纹——你被选中的证明。', icon: '✨', source: '未知' });
-      }
-    }
-  }
-
-  // ── JOURNAL: record major choices ──
-  var detail = choice.text.length > 30 ? choice.text.substring(0, 28) + '…' : choice.text;
-  addToJournal({
-    title: '💬 与' + npcName + '的对话',
-    detail: '选择了: 「' + detail + '」',
-    time: new Date().toLocaleTimeString(),
-    done: true
-  });
-
-  // Record choice in vars
-  vars["_last_choice_npc" + idx] = choice.text;
-
-  clearAllChoices();
-
-  if (choice.nextRound !== undefined) {
-    state.round[idx] = choice.nextRound;
-    // Continue to next round
-    startNpcConversation(idx);
-  } else {
-    // No nextRound means done
-    state.done[idx] = true;
-    state.activeNpc = null;
-    if (window._npcGlow[idx]) window._npcGlow[idx].opacity = 0;
-    if (window._npcBadges[idx]) window._npcBadges[idx].opacity = 1;
-    ovHtml('dialog-text', '（对话结束）');
-    clearSpeakerName();
-
-    // ── JOURNAL: NPC conversation complete ──
-    addToJournal({
-      title: '✅ 与' + npcData[idx].name + '对话完成',
-      detail: npcData[idx].title + ' — 获得了指引',
-      time: new Date().toLocaleTimeString(),
-      done: true
+    emit("nodeStart", {
+      id: node.id,
+      speaker: node.speaker || null,
+      text: node.text || "",
+      mode: node.mode || "dialogue"
     });
-
-    checkAllDone();
+    startTyping(node.text || "");
+    return node;
   }
+  const api = {
+    /**
+     * 加载对话节点列表
+     * @param {Array} nodes - 节点数组
+     */
+    loadDialogue(nodes) {
+      nodeMap.clear();
+      if (Array.isArray(nodes)) {
+        nodes.forEach((n) => {
+          if (n && n.id) nodeMap.set(n.id, n);
+        });
+      }
+    },
+    /**
+     * 开始对话（从指定节点）
+     * @param {string} nodeId
+     */
+    start(nodeId) {
+      const node = nodeMap.get(nodeId);
+      if (!node) {
+        console.error(`[DialogueEngine] \u8D77\u59CB\u8282\u70B9\u4E0D\u5B58\u5728: ${nodeId}`);
+        return;
+      }
+      enterNode(node);
+    },
+    /**
+     * 获取当前对话节点
+     * @returns {Object|null}
+     */
+    getCurrentNode() {
+      return currentNode || null;
+    },
+    /**
+     * 获取指定节点
+     * @param {string} nodeId
+     * @returns {Object|undefined}
+     */
+    getNode(nodeId) {
+      return nodeMap.get(nodeId);
+    },
+    /**
+     * 玩家选择选项
+     * @param {number} index - 选项索引（在可用选项中）
+     * @returns {boolean} 是否成功跳转
+     */
+    selectChoice(index) {
+      const choices = api.getAvailableChoices();
+      if (index < 0 || index >= choices.length) {
+        console.warn(`[DialogueEngine] \u65E0\u6548\u9009\u9879\u7D22\u5F15: ${index}`);
+        return false;
+      }
+      const choice = choices[index];
+      emit("choice", {
+        choiceIndex: index,
+        choiceText: choice.text,
+        nextNodeId: choice.next,
+        effects: choice.effects || null
+      });
+      const affChanges = applyEffects(choice.effects);
+      if (choice.next) {
+        const nextNode = nodeMap.get(choice.next);
+        if (nextNode) {
+          emit("nodeEnd", {
+            nodeId: currentNodeId,
+            nextNodeId: choice.next,
+            choiceIndex: index,
+            affectionChanges: affChanges || []
+          });
+          enterNode(nextNode);
+          return true;
+        } else {
+          console.error(
+            `[DialogueEngine] \u8DF3\u8F6C\u76EE\u6807\u8282\u70B9\u4E0D\u5B58\u5728: ${choice.next}`
+          );
+        }
+      } else {
+        emit("nodeEnd", {
+          nodeId: currentNodeId,
+          nextNodeId: null,
+          choiceIndex: index,
+          affectionChanges: affChanges || [],
+          isEnd: true
+        });
+        currentNode = null;
+        currentNodeId = null;
+        return true;
+      }
+      return false;
+    },
+    /**
+     * 获取当前可用的选项列表（已过滤条件）
+     * @returns {Array<{text, next, condition, effects}>}
+     */
+    getAvailableChoices() {
+      if (!currentNode || !currentNode.choices) return [];
+      return currentNode.choices.filter((c) => {
+        if (!c.condition) return true;
+        if (typeof c.condition === "function") return c.condition(flags2);
+        return flags2.evaluateCondition(c.condition);
+      });
+    },
+    /**
+     * 获取打字机下一个字符（用于外部 UI 消费）
+     * @returns {{char: string, done: boolean}}
+     */
+    getChar() {
+      if (!typingActive) {
+        return { char: "", done: true };
+      }
+      if (typingIndex < typingBuffer.length) {
+        const ch = typingBuffer[typingIndex];
+        typingIndex++;
+        return { char: ch, done: false };
+      }
+      stopTyping();
+      return { char: "", done: true };
+    },
+    /**
+     * 是否正在打字
+     * @returns {boolean}
+     */
+    isTyping() {
+      return typingActive;
+    },
+    /**
+     * 跳过打字，立即显示完整文本
+     */
+    skipTyping() {
+      if (!typingActive) return;
+      stopTyping();
+      typingIndex = typingBuffer.length;
+      emit("typingChar", {
+        char: "",
+        progress: 1,
+        fullText: typingBuffer,
+        skipped: true
+      });
+    },
+    /**
+     * 打字完成百分比
+     * @returns {number} 0~1
+     */
+    getTypingProgress() {
+      if (typingBuffer.length === 0) return 1;
+      return typingIndex / typingBuffer.length;
+    },
+    /** 事件注册 */
+    on,
+    /** 事件发射 */
+    emit,
+    /** 手动设置打字速度 (ms/char) */
+    setTypingSpeed(ms) {
+      typingSpeed = Math.max(10, ms);
+      if (typingActive) {
+        clearInterval(typingTimer);
+        typingTimer = setInterval(tickTyping, typingSpeed);
+      }
+    },
+    /**
+     * 跳转到指定节点（无打字效果，直接切换）
+     * @param {string} nodeId
+     */
+    jump(nodeId) {
+      const node = nodeMap.get(nodeId);
+      if (!node) {
+        console.error(`[DialogueEngine] \u8DF3\u8F6C\u76EE\u6807\u4E0D\u5B58\u5728: ${nodeId}`);
+        return;
+      }
+      stopTyping();
+      emit("nodeEnd", {
+        nodeId: currentNodeId,
+        nextNodeId: nodeId,
+        isJump: true
+      });
+      enterNode(node);
+    },
+    /**
+     * 重新加载当前节点
+     */
+    reload() {
+      if (currentNodeId) {
+        enterNode(nodeMap.get(currentNodeId));
+      }
+    },
+    /**
+     * 获取节点总数
+     */
+    getNodeCount() {
+      return nodeMap.size;
+    },
+    /**
+     * 获取指定场景的所有节点ID列表
+     * @param {string} sceneId
+     * @returns {string[]}
+     */
+    getNodesByScene(sceneId) {
+      const ids = [];
+      nodeMap.forEach((n, id) => {
+        if (n.scene === sceneId) ids.push(id);
+      });
+      return ids;
+    }
+  };
+  return api;
 }
 
-function checkAllDone() {
-  if (state.done[0] && state.done[1] && state.done[2] && !state.allDone) {
-    state.allDone = true;
-    window.__allDone = true;
-    setTimeout(function() {
-      add([
-        rect(500, 240, { radius: 12 }),
-        color(0, 0, 0), opacity(0.92),
-        pos(150, 180),
-        outline(3, rgb(255, 215, 0))
-      ]);
-      ovSet('ending-title', width()/2, 230, '🌟 序幕完成 🌟', 36, 'rgb(255,215,0)', { center: true, title: true });
-      ovSet('ending-sub', width()/2, 280, '你已获得三位守护者的指引。<br>冒险才刚刚开始……', 16, 'rgb(220,220,220)', { center: true });
-      var summary = "武器: " + (vars.weapon || "无") + " | 好感: 莉拉" + vars.affection_lyra + " 凯尔" + vars.affection_elder + " 马库斯" + vars.affection_marcus;
-      ovSet('ending-summary', width()/2, 320, summary, 13, 'rgb(180,180,200)', { center: true });
-    }, 800);
+// ui/DialogBox.js
+function DialogBox(opts) {
+  const { render, engine: engine2, characters } = opts;
+  const cleanupFns = [];
+  const CHARACTERS2 = characters || {};
+  let typingBuffer = "";
+  let typingProgress = 1;
+  let isTypingActive = false;
+  let mode = "dialogue";
+  let currentSpeaker = null;
+  let isVisible = false;
+  const wrapper = document.createElement("div");
+  wrapper.className = "dialogbox-wrapper";
+  Object.assign(wrapper.style, {
+    position: "fixed",
+    bottom: "0",
+    left: "0",
+    right: "0",
+    zIndex: "50",
+    padding: "0 max(2vw, 16px) max(2vh, 16px) max(2vw, 16px)",
+    pointerEvents: "auto",
+    display: "none",
+    opacity: "0",
+    transition: "opacity 0.3s ease"
+  });
+  const bubble = document.createElement("div");
+  bubble.className = "dialogbox-bubble";
+  Object.assign(bubble.style, {
+    maxWidth: "800px",
+    margin: "0 auto",
+    background: "rgba(26, 35, 50, 0.85)",
+    backdropFilter: "blur(16px)",
+    WebkitBackdropFilter: "blur(16px)",
+    borderRadius: "12px",
+    border: "1px solid rgba(129, 140, 248, 0.12)",
+    padding: "16px 20px",
+    position: "relative",
+    cursor: "pointer",
+    userSelect: "none"
+  });
+  const speakerRow = document.createElement("div");
+  speakerRow.className = "dialogbox-speaker";
+  Object.assign(speakerRow.style, {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    marginBottom: "8px"
+  });
+  const avatarEl = document.createElement("span");
+  avatarEl.className = "dialogbox-avatar";
+  Object.assign(avatarEl.style, {
+    width: "32px",
+    height: "32px",
+    borderRadius: "50%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "18px",
+    background: "rgba(129, 140, 248, 0.15)",
+    border: "1px solid rgba(129, 140, 248, 0.25)",
+    flexShrink: "0"
+  });
+  const nameEl = document.createElement("span");
+  nameEl.className = "dialogbox-name";
+  Object.assign(nameEl.style, {
+    fontSize: "14px",
+    fontWeight: "600",
+    color: "#a5b4fc",
+    fontFamily: "system-ui, sans-serif",
+    letterSpacing: "0.5px"
+  });
+  speakerRow.appendChild(avatarEl);
+  speakerRow.appendChild(nameEl);
+  const textEl = document.createElement("div");
+  textEl.className = "dialogbox-text";
+  Object.assign(textEl.style, {
+    fontSize: "16px",
+    lineHeight: "1.8",
+    color: "#e2e8f0",
+    fontFamily: "system-ui, sans-serif",
+    minHeight: "2.8em",
+    paddingLeft: "4px",
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-word"
+  });
+  const indicatorRow = document.createElement("div");
+  indicatorRow.className = "dialogbox-indicator";
+  Object.assign(indicatorRow.style, {
+    display: "flex",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    marginTop: "6px",
+    minHeight: "20px"
+  });
+  const indicatorEl = document.createElement("span");
+  indicatorEl.className = "dialogbox-indicator-text";
+  Object.assign(indicatorEl.style, {
+    fontSize: "12px",
+    color: "#94a3b8",
+    fontFamily: "system-ui, sans-serif",
+    transition: "opacity 0.2s ease"
+  });
+  indicatorRow.appendChild(indicatorEl);
+  bubble.appendChild(speakerRow);
+  bubble.appendChild(textEl);
+  bubble.appendChild(indicatorRow);
+  wrapper.appendChild(bubble);
+  bubble.addEventListener("click", () => {
+    if (isTypingActive) {
+      if (engine2 && engine2.skipTyping) {
+        engine2.skipTyping();
+      } else {
+        skipTyping();
+      }
+    } else {
+      if (engine2 && engine2.getAvailableChoices) {
+        const choices = engine2.getAvailableChoices();
+        if (choices.length === 0 && engine2.emit) {
+          engine2.emit("nodeEnd", { clicked: true });
+        }
+      }
+    }
+  });
+  function clearTypingBuffer() {
+    isTypingActive = false;
+    typingBuffer = "";
+    typingProgress = 1;
   }
+  function updateIndicator(typing) {
+    if (typing) {
+      indicatorEl.textContent = "\u258D \u6B63\u5728\u8BB2\u8FF0...";
+      indicatorEl.style.color = "#94a3b8";
+    } else {
+      indicatorEl.textContent = "\u25BC \u70B9\u51FB\u7EE7\u7EED";
+      indicatorEl.style.color = "#a5b4fc";
+    }
+  }
+  const api = {
+    /** DOM 根元素 */
+    element: wrapper,
+    /** 显示对话框 */
+    show() {
+      isVisible = true;
+      wrapper.style.display = "block";
+      wrapper.offsetHeight;
+      wrapper.style.opacity = "1";
+    },
+    /** 隐藏对话框 */
+    hide() {
+      isVisible = false;
+      clearTypingBuffer();
+      wrapper.style.opacity = "0";
+      setTimeout(() => {
+        if (!isVisible) wrapper.style.display = "none";
+      }, 300);
+    },
+    /** 设置模式 */
+    setMode(newMode) {
+      mode = newMode;
+      textEl.style.fontStyle = mode === "inner_monologue" ? "italic" : "normal";
+      textEl.style.opacity = mode === "inner_monologue" ? "0.85" : "1";
+    },
+    /** 设置说话者，null = 旁白 */
+    setSpeaker(speakerId) {
+      if (!speakerId || !CHARACTERS2[speakerId]) {
+        currentSpeaker = null;
+        speakerRow.style.display = "none";
+        avatarEl.textContent = "";
+        nameEl.textContent = "";
+        this.setMode("narration");
+        return;
+      }
+      const char = CHARACTERS2[speakerId];
+      currentSpeaker = { id: speakerId, ...char };
+      speakerRow.style.display = "flex";
+      avatarEl.textContent = char.emoji || "\u2728";
+      nameEl.textContent = char.name || speakerId;
+      this.setMode("dialogue");
+    },
+    /**
+     * 开始打字输出
+     * @param {string} text — 完整文本
+     * @param {string|null} speakerId — 说话者ID，null=旁白
+     * @param {string} [modeOverride] — 可选模式覆盖
+     */
+    typeText(text, speakerId, modeOverride) {
+      clearTypingBuffer();
+      textEl.textContent = "";
+      typingBuffer = text || "";
+      typingProgress = 0;
+      isTypingActive = true;
+      if (modeOverride) {
+        this.setMode(modeOverride);
+      }
+      this.setSpeaker(speakerId);
+      if (!speakerId) {
+        textEl.style.textAlign = "center";
+        textEl.style.color = "#94a3b8";
+      } else {
+        textEl.style.textAlign = "left";
+        textEl.style.color = "#e2e8f0";
+      }
+      updateIndicator(true);
+      textEl.textContent = "";
+    },
+    /** 立即完成打字（不触发 nodeEnd） */
+    skipTyping() {
+      if (!isTypingActive) return;
+      clearTypingBuffer();
+      textEl.textContent = typingBuffer;
+      updateIndicator(false);
+    },
+    /** 显示指定进度的文本（由引擎 typingChar 事件驱动） */
+    setTypingProgress(progress, fullText) {
+      if (!isTypingActive) return;
+      typingProgress = progress;
+      typingBuffer = fullText || typingBuffer;
+      const charsToShow = Math.floor(typingBuffer.length * progress);
+      textEl.textContent = typingBuffer.slice(0, charsToShow);
+      if (progress >= 1) {
+        clearTypingBuffer();
+        updateIndicator(false);
+      }
+    },
+    /** 清空内容 */
+    clear() {
+      clearTypingBuffer();
+      textEl.textContent = "";
+      updateIndicator(false);
+    },
+    /** 销毁，清理事件和DOM */
+    destroy() {
+      clearTypingBuffer();
+      cleanupFns.forEach((fn) => fn());
+      cleanupFns.length = 0;
+      if (wrapper.parentNode) {
+        wrapper.parentNode.removeChild(wrapper);
+      }
+    },
+    /** 是否正在打字 */
+    get isTyping() {
+      return isTypingActive;
+    },
+    /** 当前是否可见 */
+    get showing() {
+      return isVisible;
+    }
+  };
+  if (engine2 && engine2.on) {
+    const offNodeStart = engine2.on("nodeStart", (node) => {
+      if (node && node.text !== void 0) {
+        api.typeText(node.text, node.speaker || null, node.mode);
+      }
+    });
+    cleanupFns.push(offNodeStart);
+    const offTypingChar = engine2.on("typingChar", (data) => {
+      if (data && data.progress !== void 0) {
+        api.setTypingProgress(data.progress, data.fullText);
+      }
+    });
+    cleanupFns.push(offTypingChar);
+  }
+  if (render) {
+    render(wrapper, document.body);
+  }
+  return api;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// MAIN SCENE
-// ═══════════════════════════════════════════════════════════════════════════
-scene("main", function() {
-  // Background
-  add([rect(800, 300), color(25, 40, 25), pos(0, 400)]);
-
-  // Title — DOM overlay
-  ovSet('title-main', width()/2, 25, '🌙 星落之夜 · 序幕 🌙', 20, 'rgb(220,200,140)', { center: true, title: true });
-  add([text("When Stars Fall, Shadows Rise", { size: 11 }), color(140, 140, 160), pos(width()/2, 48), origin("center")]);
-
-  // ── NPC rendering ──
-  window._npcGlow = [];
-  window._npcBadges = [];
-  window._npcLockIcons = [];
-
-  for (var i = 0; i < 3; i++) {
-    var d = npcData[i];
-    var nx = d.x, ny = d.y;
-
-    // Glow
-    var g = add([rect(72, 98, { radius: 10 }), color(d.color), opacity(0), pos(nx, ny), origin("center")]);
-    window._npcGlow.push(g);
-
-    // Body
-    add([rect(64, 90, { radius: 8 }), color(d.color), pos(nx, ny), origin("center"), area(), "npc-" + i]);
-
-    // Emoji (keep as Kaboom text - emojis render fine)
-    add([text(d.emoji, { size: 32 }), pos(nx, ny - 5), origin("center")]);
-
-    // Name — DOM overlay
-    ovSet('npc-name-' + i, nx, ny + 45, d.name, 13, '#fff', { center: true });
-
-    // Title — DOM overlay
-    ovSet('npc-title-' + i, nx, ny + 61, d.title, 10, 'rgb(180,180,180)', { center: true });
-
-    // Done badge (checkmark only, emoji is fine)
-    var bdg = add([text("✓", { size: 18 }), color(100,255,100), pos(nx + 30, ny - 40), origin("center"), opacity(0)]);
-    window._npcBadges.push(bdg);
-
-    // Lock icon (emoji is fine)
-    var lockOpacity = state.npcUnlocked[i] ? 0 : 1;
-    var lock = add([text("🔒", { size: 20 }), pos(nx - 30, ny - 40), origin("center"), opacity(lockOpacity)]);
-    window._npcLockIcons.push(lock);
-
-    // ── Affection indicator (emoji + number)
-    var affKeys = ['affection_lyra', 'affection_elder', 'affection_marcus'];
-    var affVal = vars[affKeys[i]] || 0;
-    var affIcon = affVal >= 3 ? '💚' : (affVal > 0 ? '💛' : '🤍');
-    if (affVal < 0) affIcon = '💔';
-    add([text(affIcon + ' ' + affVal, { size: 10 }), color(200, 200, 200), pos(nx, ny - 48), origin('center'), opacity(1), 'aff-' + i]);
-  }
-
-  // ── Dialog box ──
-  add([rect(740, 170, { radius: 10 }), color(0,0,0), opacity(0.88), pos(30, 410), outline(2, rgb(200,200,200))]);
-
-  // Dialog text — DOM overlay
-  ovSet('dialog-text', 50, 445, '点击「莉拉」开始故事', 18, '#fff');
-
-  // ── Starting journal entry ──
-  addToJournal({
-    title: '🌙 序幕开始',
-    detail: '你在星落村醒来，记忆一片空白……',
-    time: new Date().toLocaleTimeString(),
-    done: true
+// ui/ChoicePanel.js
+function ChoicePanel(opts) {
+  const { render, engine: engine2, evaluateCondition } = opts;
+  const cleanupFns = [];
+  let choices = [];
+  let isAnimating = false;
+  let isVisible = false;
+  const wrapper = document.createElement("div");
+  wrapper.className = "choicepanel-wrapper";
+  Object.assign(wrapper.style, {
+    position: "fixed",
+    bottom: "0",
+    left: "0",
+    right: "0",
+    zIndex: "45",
+    padding: "0 max(2vw, 16px) max(10vh, 80px) max(2vw, 16px)",
+    pointerEvents: "none",
+    display: "none",
+    opacity: "0",
+    transition: "opacity 0.3s ease"
   });
-
-  // ── UI Buttons: Inventory + Journal ──
-  // Inventory button (bottom-right)
-  window._invBtnBg = add([rect(50, 26, { radius: 6 }), color(60, 60, 80), pos(620, 588), area(), opacity(0.85), 'inv-btn']);
-  add([text('🎒', { size: 14 }), pos(625, 592)]);
-  ovSet('inv-btn-label', 648, 597, '背包 I', 9, 'rgb(200,200,200)');
-
-  // Journal button (next to inventory)
-  window._jrnBtnBg = add([rect(50, 26, { radius: 6 }), color(60, 60, 80), pos(680, 588), area(), opacity(0.85), 'jrn-btn']);
-  add([text('📜', { size: 14 }), pos(685, 592)]);
-  ovSet('jrn-btn-label', 708, 597, '日志 J', 9, 'rgb(200,200,200)');
-
-  onClick('inv-btn', function() { toggleInventory(); });
-  onClick('jrn-btn', function() { toggleJournal(); });
-
-  // ── NPC click handlers ──
-  for (var i = 0; i < 3; i++) {
-    (function(idx) {
-      onClick("npc-" + idx, function() {
-        startNpcConversation(idx);
+  const container = document.createElement("div");
+  container.className = "choicepanel-container";
+  Object.assign(container.style, {
+    maxWidth: "640px",
+    margin: "0 auto",
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px"
+  });
+  wrapper.appendChild(container);
+  function createChoiceItem(choice, index) {
+    const isAvailable = choice.condition ? evaluateCondition ? evaluateCondition(choice.condition) : false : true;
+    const item = document.createElement("div");
+    item.className = "choicepanel-item";
+    item.dataset.index = index;
+    item.dataset.available = isAvailable ? "true" : "false";
+    Object.assign(item.style, {
+      display: "flex",
+      alignItems: "center",
+      gap: "12px",
+      padding: "12px 16px",
+      borderRadius: "10px",
+      background: isAvailable ? "rgba(26, 35, 50, 0.75)" : "rgba(26, 35, 50, 0.4)",
+      backdropFilter: "blur(8px)",
+      WebkitBackdropFilter: "blur(8px)",
+      border: isAvailable ? "1px solid rgba(129, 140, 248, 0.2)" : "1px solid rgba(100, 116, 139, 0.15)",
+      cursor: isAvailable ? "pointer" : "not-allowed",
+      transition: "all 0.25s ease",
+      opacity: isAvailable ? "1" : "0.45",
+      pointerEvents: isAvailable ? "auto" : "none",
+      userSelect: "none"
+    });
+    const star = document.createElement("span");
+    star.className = "choicepanel-star";
+    Object.assign(star.style, {
+      fontSize: "14px",
+      color: isAvailable ? "#fbbf24" : "#475569",
+      width: "20px",
+      textAlign: "center",
+      flexShrink: "0",
+      transition: "transform 0.3s ease, color 0.3s ease"
+    });
+    star.textContent = "\u2726";
+    item.appendChild(star);
+    const text = document.createElement("span");
+    text.className = "choicepanel-text";
+    Object.assign(text.style, {
+      fontSize: "15px",
+      lineHeight: "1.5",
+      color: isAvailable ? "#e2e8f0" : "#64748b",
+      fontFamily: "system-ui, sans-serif",
+      flex: "1"
+    });
+    text.textContent = choice.text;
+    item.appendChild(text);
+    if (isAvailable) {
+      item.addEventListener("mouseenter", () => {
+        item.style.background = "rgba(99, 102, 241, 0.25)";
+        item.style.borderColor = "rgba(99, 102, 241, 0.4)";
+        star.style.transform = "scale(1.3)";
+        star.style.color = "#f59e0b";
       });
-    })(i);
-  }
-
-  // ── Choice click handlers (up to 3 choices) ──
-  for (var c = 0; c < 3; c++) {
-    (function(choiceIdx) {
-      onClick("choice-rect-" + choiceIdx, function() {
-        if (!state.showChoices || state.typing) return;
-        var idx = state.activeNpc;
-        if (idx === null) return;
-        selectChoice(idx, choiceIdx);
+      item.addEventListener("mouseleave", () => {
+        item.style.background = "rgba(26, 35, 50, 0.75)";
+        item.style.borderColor = "rgba(129, 140, 248, 0.2)";
+        star.style.transform = "scale(1)";
+        star.style.color = "#fbbf24";
       });
-    })(c);
+      item.addEventListener("click", () => {
+        if (isAnimating) return;
+        selectChoice(index);
+      });
+    }
+    return item;
   }
+  function selectChoice(index) {
+    if (isAnimating) return;
+    isAnimating = true;
+    const choice = choices[index];
+    if (!choice) return;
+    const items = container.querySelectorAll(".choicepanel-item");
+    const selectedItem = items[index];
+    if (!selectedItem) return;
+    const star = selectedItem.querySelector(".choicepanel-star");
+    if (star) {
+      star.style.transform = "scale(1.8)";
+      star.style.color = "#fbbf24";
+      star.style.textShadow = "0 0 12px #fbbf24";
+    }
+    selectedItem.style.background = "rgba(99, 102, 241, 0.3)";
+    selectedItem.style.borderColor = "#fbbf24";
+    items.forEach((item, i) => {
+      if (i !== index) {
+        item.style.opacity = "0.2";
+        item.style.transform = "translateX(-10px)";
+      }
+    });
+    setTimeout(() => {
+      wrapper.style.opacity = "0";
+      setTimeout(() => {
+        if (engine2 && engine2.selectChoice) {
+          engine2.selectChoice(index);
+        }
+        isAnimating = false;
+      }, 250);
+    }, 400);
+  }
+  const api = {
+    element: wrapper,
+    /** 显示选项 */
+    show(newChoices) {
+      choices = newChoices || [];
+      if (choices.length > 4) {
+        choices = choices.slice(0, 4);
+      }
+      container.innerHTML = "";
+      choices.forEach((c, i) => {
+        container.appendChild(createChoiceItem(c, i));
+      });
+      isAnimating = false;
+      isVisible = true;
+      wrapper.style.display = "block";
+      wrapper.offsetHeight;
+      wrapper.style.opacity = "1";
+    },
+    /** 隐藏 */
+    hide() {
+      isVisible = false;
+      wrapper.style.opacity = "0";
+      setTimeout(() => {
+        if (!isVisible) wrapper.style.display = "none";
+        container.innerHTML = "";
+      }, 300);
+    },
+    /** 刷新条件（重新计算可用性） */
+    refreshConditions() {
+      const items = container.querySelectorAll(".choicepanel-item");
+      items.forEach((item, i) => {
+        const choice = choices[i];
+        if (!choice) return;
+        const wasAvailable = item.dataset.available === "true";
+        const isAvailable = choice.condition ? evaluateCondition ? evaluateCondition(choice.condition) : false : true;
+        if (wasAvailable !== isAvailable) {
+          item.dataset.available = isAvailable ? "true" : "false";
+          item.style.opacity = isAvailable ? "1" : "0.45";
+          item.style.cursor = isAvailable ? "pointer" : "not-allowed";
+          item.style.pointerEvents = isAvailable ? "auto" : "none";
+          item.style.background = isAvailable ? "rgba(26, 35, 50, 0.75)" : "rgba(26, 35, 50, 0.4)";
+        }
+      });
+    },
+    /** 销毁 */
+    destroy() {
+      cleanupFns.forEach((fn) => fn());
+      cleanupFns.length = 0;
+      if (wrapper.parentNode) {
+        wrapper.parentNode.removeChild(wrapper);
+      }
+    }
+  };
+  if (render) {
+    render(wrapper, document.body);
+  }
+  return api;
+}
 
-  // ── Keyboard shortcuts ──
-  onKeyPress("1", function() {
-    if (state.showChoices && !state.typing) selectChoice(state.activeNpc, 0);
+// ui/HUD.js
+function HUD(opts) {
+  const { render, flagSystem, affectionCharacters } = opts;
+  const CHAR_IDS = affectionCharacters && affectionCharacters.length >= 3 ? affectionCharacters.slice(0, 3) : [
+    { id: "kael", label: "\u51EF\u5C14" },
+    { id: "marcus", label: "\u9A6C\u5E93\u65AF" },
+    { id: "lyra", label: "\u8389\u62C9" }
+  ];
+  let chapterName = "";
+  let sceneName = "";
+  let isVisible = false;
+  const wrapper = document.createElement("div");
+  wrapper.className = "hud-wrapper";
+  Object.assign(wrapper.style, {
+    position: "fixed",
+    top: "0",
+    left: "0",
+    right: "0",
+    zIndex: "60",
+    height: "36px",
+    padding: "0 max(4vw, 24px)",
+    display: "none",
+    opacity: "0",
+    transition: "opacity 0.3s ease",
+    background: "rgba(10, 14, 26, 0.6)",
+    backdropFilter: "blur(10px)",
+    WebkitBackdropFilter: "blur(10px)",
+    borderBottom: "1px solid rgba(129, 140, 248, 0.08)"
   });
-  onKeyPress("2", function() {
-    if (state.showChoices && !state.typing) selectChoice(state.activeNpc, 1);
+  const inner = document.createElement("div");
+  Object.assign(inner.style, {
+    maxWidth: "1200px",
+    margin: "0 auto",
+    height: "100%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between"
   });
-  onKeyPress("3", function() {
-    if (state.showChoices && !state.typing) selectChoice(state.activeNpc, 2);
+  wrapper.appendChild(inner);
+  const leftGroup = document.createElement("div");
+  Object.assign(leftGroup.style, {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px"
   });
-  onKeyPress("i", function() { toggleInventory(); });
-  onKeyPress("j", function() { toggleJournal(); });
+  const chapterEl = document.createElement("span");
+  chapterEl.className = "hud-chapter";
+  Object.assign(chapterEl.style, {
+    fontSize: "12px",
+    fontWeight: "600",
+    color: "#a5b4fc",
+    fontFamily: "system-ui, sans-serif",
+    letterSpacing: "1px",
+    textTransform: "uppercase"
+  });
+  const sceneEl = document.createElement("span");
+  sceneEl.className = "hud-scene";
+  Object.assign(sceneEl.style, {
+    fontSize: "12px",
+    color: "#94a3b8",
+    fontFamily: "system-ui, sans-serif"
+  });
+  const sep = document.createElement("span");
+  sep.textContent = "/";
+  Object.assign(sep.style, {
+    fontSize: "12px",
+    color: "#475569"
+  });
+  leftGroup.appendChild(chapterEl);
+  leftGroup.appendChild(sep);
+  leftGroup.appendChild(sceneEl);
+  inner.appendChild(leftGroup);
+  const rightGroup = document.createElement("div");
+  Object.assign(rightGroup.style, {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px"
+  });
+  const dotContainer = document.createElement("div");
+  Object.assign(dotContainer.style, {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px"
+  });
+  const dots = {};
+  CHAR_IDS.forEach((char) => {
+    const dot = document.createElement("span");
+    dot.className = `hud-dot hud-dot-${char.id}`;
+    dot.title = char.label;
+    Object.assign(dot.style, {
+      width: "10px",
+      height: "10px",
+      borderRadius: "50%",
+      display: "inline-block",
+      transition: "background 0.4s ease, box-shadow 0.4s ease"
+    });
+    dotContainer.appendChild(dot);
+    dots[char.id] = dot;
+  });
+  rightGroup.appendChild(dotContainer);
+  inner.appendChild(rightGroup);
+  function affectionColor(value) {
+    if (value >= 8) return "#34d399";
+    if (value >= 5) return "#a5b4fc";
+    if (value >= 2) return "#94a3b8";
+    return "#475569";
+  }
+  function affectionGlow(value) {
+    if (value >= 8) return "0 0 6px rgba(52, 211, 153, 0.5)";
+    return "none";
+  }
+  const api = {
+    element: wrapper,
+    show() {
+      isVisible = true;
+      wrapper.style.display = "block";
+      wrapper.offsetHeight;
+      wrapper.style.opacity = "1";
+    },
+    hide() {
+      isVisible = false;
+      wrapper.style.opacity = "0";
+      setTimeout(() => {
+        if (!isVisible) wrapper.style.display = "none";
+      }, 300);
+    },
+    /** 设置场景标题 */
+    setScene(chapter, scene) {
+      chapterName = chapter || "";
+      sceneName = scene || "";
+      chapterEl.textContent = chapterName;
+      sceneEl.textContent = sceneName;
+    },
+    /** 刷新好感度显示 */
+    refreshAffections() {
+      if (!flagSystem || !flagSystem.getAffection) return;
+      CHAR_IDS.forEach((char) => {
+        const val = flagSystem.getAffection(char.id);
+        if (dots[char.id]) {
+          dots[char.id].style.background = affectionColor(val);
+          dots[char.id].style.boxShadow = affectionGlow(val);
+        }
+      });
+    },
+    /** 销毁 */
+    destroy() {
+      if (wrapper.parentNode) {
+        wrapper.parentNode.removeChild(wrapper);
+      }
+    }
+  };
+  if (render) {
+    render(wrapper, document.body);
+  }
+  return api;
+}
 
-  // Click anywhere to skip/advance typing (speed up)
-  onClick(function() {
-    // This would require implementing a skip feature
-    // For now, just a placeholder
+// ui/MenuUI.js
+function MenuUI(opts) {
+  const { render, saveManager: saveManager2, sceneManager: sceneManager2 } = opts;
+  let isOpen = false;
+  let currentView = "main";
+  const toggleBtn = document.createElement("button");
+  toggleBtn.className = "menu-toggle-btn";
+  toggleBtn.textContent = "\u2261";
+  toggleBtn.title = "\u83DC\u5355";
+  Object.assign(toggleBtn.style, {
+    position: "fixed",
+    top: "6px",
+    right: "max(4vw, 20px)",
+    zIndex: "70",
+    width: "28px",
+    height: "28px",
+    border: "1px solid rgba(129, 140, 248, 0.2)",
+    borderRadius: "6px",
+    background: "rgba(10, 14, 26, 0.5)",
+    backdropFilter: "blur(6px)",
+    WebkitBackdropFilter: "blur(6px)",
+    color: "#e2e8f0",
+    fontSize: "18px",
+    lineHeight: "1",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    transition: "all 0.2s ease",
+    fontFamily: "system-ui, sans-serif",
+    padding: "0"
   });
+  toggleBtn.addEventListener("mouseenter", () => {
+    toggleBtn.style.background = "rgba(99, 102, 241, 0.3)";
+    toggleBtn.style.borderColor = "rgba(129, 140, 248, 0.4)";
+  });
+  toggleBtn.addEventListener("mouseleave", () => {
+    toggleBtn.style.background = "rgba(10, 14, 26, 0.5)";
+    toggleBtn.style.borderColor = "rgba(129, 140, 248, 0.2)";
+  });
+  const overlay = document.createElement("div");
+  overlay.className = "menu-overlay";
+  Object.assign(overlay.style, {
+    position: "fixed",
+    inset: "0",
+    zIndex: "90",
+    display: "none",
+    background: "rgba(10, 14, 26, 0.7)",
+    backdropFilter: "blur(8px)",
+    WebkitBackdropFilter: "blur(8px)",
+    alignItems: "center",
+    justifyContent: "center",
+    opacity: "0",
+    transition: "opacity 0.25s ease"
+  });
+  const panel = document.createElement("div");
+  panel.className = "menu-panel";
+  Object.assign(panel.style, {
+    background: "rgba(26, 35, 50, 0.92)",
+    backdropFilter: "blur(16px)",
+    WebkitBackdropFilter: "blur(16px)",
+    borderRadius: "14px",
+    border: "1px solid rgba(129, 140, 248, 0.15)",
+    padding: "24px 28px",
+    minWidth: "320px",
+    maxWidth: "440px",
+    width: "90vw",
+    boxShadow: "0 8px 32px rgba(0,0,0,0.4)"
+  });
+  const contentArea = document.createElement("div");
+  contentArea.className = "menu-content";
+  panel.appendChild(contentArea);
+  overlay.appendChild(panel);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
+  });
+  function renderMainMenu() {
+    currentView = "main";
+    contentArea.innerHTML = "";
+    const title = document.createElement("h2");
+    title.textContent = "\u83DC\u5355";
+    Object.assign(title.style, {
+      fontSize: "18px",
+      fontWeight: "600",
+      color: "#e2e8f0",
+      fontFamily: "'Crimson Text', serif",
+      textAlign: "center",
+      marginBottom: "20px",
+      letterSpacing: "2px"
+    });
+    contentArea.appendChild(title);
+    const buttons = [
+      { label: "\u{1F4D6} \u5B58\u6863", action: () => renderSaveView("save") },
+      { label: "\u{1F4C2} \u8BFB\u6863", action: () => renderSaveView("load") },
+      { label: "\u{1F3E0} \u8FD4\u56DE\u6807\u9898", action: () => {
+        close();
+        if (sceneManager2 && sceneManager2.returnToTitle) sceneManager2.returnToTitle();
+      } }
+    ];
+    buttons.forEach((btn) => {
+      const el = document.createElement("button");
+      el.textContent = btn.label;
+      Object.assign(el.style, {
+        display: "block",
+        width: "100%",
+        padding: "10px 16px",
+        marginBottom: "8px",
+        border: "1px solid rgba(129, 140, 248, 0.15)",
+        borderRadius: "8px",
+        background: "rgba(15, 23, 42, 0.5)",
+        color: "#e2e8f0",
+        fontSize: "14px",
+        fontFamily: "system-ui, sans-serif",
+        cursor: "pointer",
+        textAlign: "left",
+        transition: "all 0.2s ease"
+      });
+      el.addEventListener("mouseenter", () => {
+        el.style.background = "rgba(99, 102, 241, 0.2)";
+        el.style.borderColor = "rgba(129, 140, 248, 0.3)";
+      });
+      el.addEventListener("mouseleave", () => {
+        el.style.background = "rgba(15, 23, 42, 0.5)";
+        el.style.borderColor = "rgba(129, 140, 248, 0.15)";
+      });
+      el.addEventListener("click", btn.action);
+      contentArea.appendChild(el);
+    });
+  }
+  function renderSaveView(mode) {
+    currentView = mode;
+    contentArea.innerHTML = "";
+    const header = document.createElement("div");
+    Object.assign(header.style, {
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+      marginBottom: "16px"
+    });
+    const backBtn = document.createElement("button");
+    backBtn.textContent = "\u2190";
+    Object.assign(backBtn.style, {
+      background: "none",
+      border: "1px solid rgba(129, 140, 248, 0.2)",
+      borderRadius: "6px",
+      color: "#94a3b8",
+      fontSize: "14px",
+      padding: "4px 8px",
+      cursor: "pointer"
+    });
+    backBtn.addEventListener("click", renderMainMenu);
+    const title = document.createElement("h2");
+    title.textContent = mode === "save" ? "\u5B58\u6863" : "\u8BFB\u6863";
+    Object.assign(title.style, {
+      fontSize: "16px",
+      fontWeight: "600",
+      color: "#e2e8f0",
+      fontFamily: "'Crimson Text', serif"
+    });
+    header.appendChild(backBtn);
+    header.appendChild(title);
+    contentArea.appendChild(header);
+    const rawSlots = saveManager2 && saveManager2.getSaveList ? saveManager2.getSaveList() : [];
+    const slots = rawSlots.length > 0 ? rawSlots : [
+      { slot: "auto", label: "\u81EA\u52A8\u5B58\u6863" },
+      { slot: "1", label: "\u5B58\u6863\u4F4D 1" },
+      { slot: "2", label: "\u5B58\u6863\u4F4D 2" },
+      { slot: "3", label: "\u5B58\u6863\u4F4D 3" }
+    ];
+    slots.forEach((slot) => {
+      const slotId = slot.slot || slot.id || "auto";
+      const info = slot.exists || slot.timestamp ? slot : null;
+      const slotKey = slotId;
+      const slotEl = document.createElement("div");
+      Object.assign(slotEl.style, {
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "10px 12px",
+        marginBottom: "6px",
+        borderRadius: "8px",
+        background: info ? "rgba(15, 23, 42, 0.5)" : "rgba(15, 23, 42, 0.3)",
+        border: "1px solid rgba(129, 140, 248, 0.1)",
+        cursor: "pointer",
+        transition: "all 0.2s ease"
+      });
+      const labelSpan = document.createElement("span");
+      labelSpan.style.color = info ? "#e2e8f0" : "#64748b";
+      labelSpan.style.fontSize = "13px";
+      labelSpan.style.fontFamily = "system-ui, sans-serif";
+      if (slot.id === "auto") {
+        labelSpan.textContent = "\u{1F4BE} \u81EA\u52A8\u5B58\u6863";
+      } else {
+        labelSpan.textContent = slot.label || `\u{1F4C1} \u5B58\u6863\u4F4D ${slotKey.replace("slot", "")}`;
+      }
+      const infoSpan = document.createElement("span");
+      infoSpan.style.color = "#64748b";
+      infoSpan.style.fontSize = "11px";
+      infoSpan.style.fontFamily = "system-ui, sans-serif";
+      if (info) {
+        const date = info.timestamp ? new Date(info.timestamp).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "--";
+        const chapter = info.chapter || "--";
+        infoSpan.textContent = `${date} \xB7 ${chapter}`;
+      } else {
+        infoSpan.textContent = "\u2014 \u7A7A \u2014";
+      }
+      slotEl.appendChild(labelSpan);
+      slotEl.appendChild(infoSpan);
+      slotEl.addEventListener("mouseenter", () => {
+        slotEl.style.background = "rgba(99, 102, 241, 0.15)";
+        slotEl.style.borderColor = "rgba(129, 140, 248, 0.25)";
+      });
+      slotEl.addEventListener("mouseleave", () => {
+        slotEl.style.background = info ? "rgba(15, 23, 42, 0.5)" : "rgba(15, 23, 42, 0.3)";
+        slotEl.style.borderColor = "rgba(129, 140, 248, 0.1)";
+      });
+      slotEl.addEventListener("click", () => {
+        if (mode === "save" && saveManager2 && saveManager2.save) {
+          saveManager2.save(slotKey, { currentNodeId: "", sceneId: "", sceneName: info ? info.sceneName : "", nodePreview: info ? info.nodePreview : "" });
+          renderSaveView(mode);
+        } else if (mode === "load" && saveManager2 && saveManager2.load && info) {
+          close();
+          saveManager2.load(slotKey);
+        }
+      });
+      contentArea.appendChild(slotEl);
+    });
+  }
+  function open() {
+    isOpen = true;
+    overlay.style.display = "flex";
+    overlay.offsetHeight;
+    overlay.style.opacity = "1";
+    renderMainMenu();
+  }
+  function close() {
+    isOpen = false;
+    overlay.style.opacity = "0";
+    setTimeout(() => {
+      if (!isOpen) overlay.style.display = "none";
+    }, 250);
+  }
+  toggleBtn.addEventListener("click", () => {
+    if (isOpen) {
+      close();
+    } else {
+      open();
+    }
+  });
+  const api = {
+    element: overlay,
+    toggleBtn,
+    open,
+    close,
+    toggle() {
+      if (isOpen) close();
+      else open();
+    },
+    destroy() {
+      [overlay, toggleBtn].forEach((el) => {
+        if (el.parentNode) el.parentNode.removeChild(el);
+      });
+    }
+  };
+  if (render) {
+    render(toggleBtn, document.body);
+    render(overlay, document.body);
+  } else {
+    document.body.appendChild(toggleBtn);
+    document.body.appendChild(overlay);
+  }
+  return api;
+}
+
+// data/characters.js
+var CHARACTERS = {
+  narrator: {
+    id: "narrator",
+    name: "\u65C1\u767D",
+    emoji: "\u{1F319}",
+    color: "#94a3b8",
+    title: "",
+    desc: "\u4E16\u754C\u7684\u773C\u775B\uFF0C\u661F\u8FB0\u7684\u4F4E\u8BED"
+  },
+  lyra: {
+    id: "lyra",
+    name: "\u8389\u62C9",
+    emoji: "\u{1F3F9}",
+    color: "#6366f1",
+    title: "\u7A83\u661F\u8005",
+    desc: "\u4E09\u5E74\u524D\u8D70\u5230\u6751\u53E3\u53C8\u6298\u8FD4\u7684\u795E\u79D8\u5C11\u5973\u3002\u8BF4\u8BDD\u7528\u53CD\u95EE\u56DE\u907F\u95EE\u9898\uFF0C\u773C\u4E2D\u85CF\u7740\u7B2C\u4E09\u79CD\u65B9\u6848\u3002"
+  },
+  kael: {
+    id: "kael",
+    name: "\u51EF\u5C14",
+    emoji: "\u{1F9D9}",
+    color: "#f59e0b",
+    title: "\u5B88\u7891\u4EBA",
+    desc: "\u516D\u5341\u5E74\u524D\u661F\u9009\u8005\u7684\u5144\u957F\u3002\u7528\u6BD4\u55BB\u7ED5\u8FC7\u4E8B\u5B9E\uFF0C\u957F\u53E5\u4E2D\u85CF\u7740\u4E0D\u613F\u8BF4\u51FA\u53E3\u7684\u771F\u76F8\u3002"
+  },
+  marcus: {
+    id: "marcus",
+    name: "\u9A6C\u5E93\u65AF",
+    emoji: "\u{1F5E1}\uFE0F",
+    color: "#475569",
+    title: "\u94C1\u5320",
+    desc: "\u4E09\u4EE3\u94C1\u5320\u90FD\u6B7B\u5728\u8FD9\u4E2A\u6751\u91CC\uFF0C\u4ED6\u4E0D\u6253\u7B97\u5F53\u7B2C\u56DB\u4EE3\u3002\u77ED\u53E5\uFF0C\u7528'\u55EF'\u66FF\u4EE3\u56DE\u7B54\u3002"
+  },
+  stranger: {
+    id: "stranger",
+    name: "??",
+    emoji: "\u2753",
+    color: "#64748b",
+    title: "??",
+    desc: "\u672A\u77E5\u4E4B\u4EBA"
+  }
+};
+var characters_default = CHARACTERS;
+
+// data/scenes.js
+var SCENES = {
+  scene_square: {
+    id: "scene_square",
+    name: "\u661F\u843D\u5E7F\u573A",
+    desc: "\u6751\u5E84\u4E2D\u592E\u7684\u5E7F\u573A\uFF0C\u77F3\u677F\u5730\u9762\u88AB\u7838\u51FA\u4E00\u4E2A\u5927\u5751\uFF0C\u5751\u8FB9\u7F18\u6CDB\u7740\u5FAE\u5F31\u7684\u84DD\u5149\u3002",
+    bg_color: ["#0a0e1a", "#1a2332"],
+    is_canvas: true
+  },
+  scene_tree: {
+    id: "scene_tree",
+    name: "\u53E4\u6811\u4E0B",
+    desc: "\u6751\u53E3\u4E00\u68F5\u5343\u5E74\u53E4\u6811\uFF0C\u6811\u5E72\u4E0A\u523B\u6EE1\u4E86\u770B\u4E0D\u61C2\u7684\u7B26\u6587\u3002\u98CE\u8FC7\u65F6\uFF0C\u6811\u53F6\u53D1\u51FA\u7C7B\u4F3C\u4EBA\u58F0\u7684\u545C\u54BD\u3002",
+    bg_color: ["#0f1419", "#1a2e1a"],
+    is_canvas: true
+  },
+  scene_tower: {
+    id: "scene_tower",
+    name: "\u5360\u661F\u5854",
+    desc: "\u5E9F\u5F03\u7684\u77F3\u5854\uFF0C\u9876\u5C42\u5730\u677F\u753B\u7740\u4E00\u5E45\u5DE8\u5927\u7684\u661F\u56FE\u2014\u2014\u4F46\u661F\u8FB0\u7684\u4F4D\u7F6E\u5168\u90E8\u9519\u4F4D\u4E86\u3002",
+    bg_color: ["#0c1220", "#1e1b3a"],
+    is_canvas: true
+  },
+  scene_monument: {
+    id: "scene_monument",
+    name: "\u5B88\u7891\u5904",
+    desc: "\u4E00\u5757\u4E00\u4EBA\u9AD8\u7684\u9ED1\u8272\u77F3\u7891\uFF0C\u8868\u9762\u5149\u6ED1\u5982\u955C\uFF0C\u6620\u51FA\u7684\u4E0D\u662F\u4F60\u7684\u8138\u2014\u2014\u662F\u661F\u7A7A\u3002",
+    bg_color: ["#080c18", "#111827"],
+    is_canvas: true
+  },
+  scene_forest: {
+    id: "scene_forest",
+    name: "\u5E7D\u8BED\u68EE\u6797",
+    desc: "\u6751\u5916\u7684\u5BC6\u6797\uFF0C\u6811\u6728\u751F\u957F\u6210\u87BA\u65CB\u5F62\u3002\u5730\u9762\u8986\u76D6\u7740\u4F1A\u53D1\u5149\u7684\u82D4\u85D3\u3002",
+    bg_color: ["#0a1410", "#132118"],
+    is_canvas: true
+  },
+  scene_cliff: {
+    id: "scene_cliff",
+    name: "\u661F\u843D\u5C71\u5D16",
+    desc: "\u6751\u5E84\u6700\u9AD8\u7684\u60AC\u5D16\uFF0C\u4ECE\u8FD9\u91CC\u80FD\u770B\u5230\u6574\u7247\u5931\u5E8F\u7684\u661F\u7A7A\u3002\u98CE\u5F3A\u52B2\u5F97\u51E0\u4E4E\u7AD9\u4E0D\u7A33\u3002",
+    bg_color: ["#0a0e1a", "#1a1a2e"],
+    is_canvas: true
+  },
+  scene_temple: {
+    id: "scene_temple",
+    name: "\u661F\u8BED\u5185\u6BBF",
+    desc: "\u85CF\u5728\u5730\u4E0B\u7684\u53E4\u8001\u6BBF\u5802\uFF0C\u5899\u58C1\u4E0A\u523B\u6EE1\u4E86\u661F\u8BED\u6587\u5B57\u3002\u7A7A\u6C14\u4E2D\u6709\u7535\u6D41\u822C\u7684\u5FAE\u9707\u3002",
+    bg_color: ["#050810", "#0f1420"],
+    is_canvas: true
+  },
+  scene_field: {
+    id: "scene_field",
+    name: "\u661F\u91CE",
+    desc: "\u4E00\u7247\u5F00\u9614\u7684\u539F\u91CE\uFF0C\u5934\u9876\u7684\u661F\u8FB0\u50CF\u6D3B\u7269\u4E00\u6837\u7F13\u7F13\u79FB\u52A8\u3002\u5730\u9762\u6563\u843D\u7740\u6E29\u70ED\u7684\u661F\u70EC\u788E\u7247\u3002",
+    bg_color: ["#0a0a1a", "#14142e"],
+    is_canvas: true
+  }
+};
+var scenes_default = SCENES;
+
+// data/dialogues.js
+var DIALOGUES = {};
+DIALOGUES.pro_001 = {
+  id: "pro_001",
+  speaker: "narrator",
+  text: "\u4F60\u5728\u8FD9\u6761\u8DEF\u4E0A\u8D70\u4E86\u591A\u4E45\u4E86\uFF1F\n\u5929\u8272\u6697\u4E0B\u6765\u4E86\u3002\u4F46\u4F60\u8BB0\u5F97\u51FA\u53D1\u65F6\u660E\u660E\u662F\u6B63\u5348\u3002",
+  scene: "scene_forest"
+};
+DIALOGUES.pro_002 = {
+  id: "pro_002",
+  speaker: "narrator",
+  text: "\u524D\u65B9\u51FA\u73B0\u4E86\u4E00\u5EA7\u6751\u5E84\u3002\u6751\u53E3\u7ACB\u7740\u4E00\u5757\u9ED1\u8272\u7684\u77F3\u7891\uFF0C\u51E0\u4E2A\u6751\u6C11\u6C89\u9ED8\u5730\u56F4\u805A\u5728\u5468\u56F4\u3002\n\u6CA1\u6709\u4EBA\u8BF4\u8BDD\u3002\u6CA1\u6709\u4EBA\u79BB\u5F00\u3002",
+  scene: "scene_square"
+};
+DIALOGUES.pro_003 = {
+  id: "pro_003",
+  speaker: "narrator",
+  text: "\u4F60\u62AC\u8D77\u5934\u2014\u2014\u7136\u540E\u4F60\u770B\u89C1\u4E86\u3002\n\u661F\u8FB0\u5728\u79FB\u52A8\u3002\u4E0D\u662F\u4E91\u5C42\u906E\u6321\u7684\u90A3\u79CD\u79FB\u52A8\u2014\u2014\u5B83\u4EEC\u5728\u6E38\u3002\u50CF\u6D3B\u7269\u4E00\u6837\uFF0C\u5728\u591C\u7A7A\u4E2D\u7F13\u6162\u5730\u6539\u53D8\u4F4D\u7F6E\u3002"
+};
+DIALOGUES.pro_004 = {
+  id: "pro_004",
+  speaker: "narrator",
+  text: "\u4E00\u4E2A\u62AB\u7740\u65E7\u6597\u7BF7\u7684\u8001\u4EBA\u7AD9\u5728\u77F3\u7891\u65C1\u3002\u4ED6\u7684\u76EE\u5149\u8D8A\u8FC7\u6751\u6C11\uFF0C\u843D\u5728\u4F60\u8EAB\u4E0A\u3002\n\u4EFF\u4F5B\u4ED6\u4E00\u76F4\u5728\u7B49\u4F60\u3002"
+};
+DIALOGUES.pro_005 = {
+  id: "pro_005",
+  speaker: "kael",
+  text: "\u4F60\u6765\u4E86\u3002",
+  scene: "scene_monument"
+};
+DIALOGUES.pro_006 = {
+  id: "pro_006",
+  speaker: "kael",
+  text: "\u6211\u8BF4\u4E0D\u51FA\u300C\u6211\u5728\u7B49\u4F60\u300D\u8FD9\u79CD\u8BDD\u2014\u2014\u56E0\u4E3A\u6211\u7B49\u7684\u662F\u4EFB\u4F55\u4EBA\u3002\u4F46\u6765\u7684\u662F\u4F60\u3002"
+};
+DIALOGUES.pro_007 = {
+  id: "pro_007",
+  speaker: "narrator",
+  text: "\u4ED6\u8BF4\u8FD9\u8BDD\u7684\u65F6\u5019\u6CA1\u6709\u770B\u4F60\u3002\u4ED6\u7684\u773C\u775B\u59CB\u7EC8\u76EF\u7740\u90A3\u5757\u9ED1\u8272\u7684\u77F3\u7891\u2014\u2014\u4E0D\uFF0C\u662F\u77F3\u7891\u91CC\u6620\u51FA\u7684\u661F\u7A7A\u3002"
+};
+DIALOGUES.pro_008 = {
+  id: "pro_008",
+  speaker: "kael",
+  text: "\u4F60\u770B\u5230\u4E86\u3002\u661F\u661F\u5728\u52A8\u3002\u516D\u767E\u5E74\u524D\u5B83\u4EEC\u4E5F\u8FD9\u4E48\u52A8\u8FC7\u4E00\u6B21\u3002\u4E0A\u4E00\u4E2A\u770B\u89C1\u5B83\u4EEC\u52A8\u7684\u4EBA\u2026\u2026\u73B0\u5728\u8EBA\u5728\u8FD9\u91CC\u3002",
+  choices: [
+    { text: "\u300C\u5B83\u4EEC\u4E3A\u4EC0\u4E48\u4F1A\u52A8\uFF1F\u300D", next: "pro_009a", effects: { star_understanding: 1 } },
+    { text: "\u300C\u4F60\u662F\u8C01\uFF1F\u300D", next: "pro_009b" },
+    { text: "\uFF08\u6C89\u9ED8\u5730\u770B\u7740\u77F3\u7891\uFF09", next: "pro_009c", effects: { village_trust: 1 } }
+  ]
+};
+DIALOGUES.pro_009a = {
+  id: "pro_009a",
+  speaker: "kael",
+  text: "\u5B83\u4EEC\u5FD8\u4E86\u600E\u4E48\u8D70\u3002\u661F\u8FB0\u672C\u6765\u6709\u8F68\u9053\u2014\u2014\u50CF\u5927\u6CB3\u7684\u652F\u6D41\u4E00\u6837\u3002\u4F46\u73B0\u5728\u5B83\u4EEC\u4E71\u4E86\u3002\u65E7\u661F\u56FE\u5168\u5E9F\u4E86\u3002\u4F9D\u8D56\u661F\u8C61\u7684\u9B54\u6CD5\u2026\u2026\u4E5F\u5D29\u4E86\u3002",
+  effects: { star_understanding: 1 }
+};
+DIALOGUES.pro_009b = {
+  id: "pro_009b",
+  speaker: "kael",
+  text: "\u51EF\u5C14\u3002\u5B88\u7891\u4EBA\u3002\u8FD9\u4E2A\u6751\u7684\u2026\u2026\u600E\u4E48\u8BF4\u5462\u3002\u5B88\u5893\u4EBA\uFF1F\u4E0D\uFF0C\u8FD8\u4E0D\u5230\u65F6\u5019\u3002\u4F46\u5FEB\u4E86\u3002"
+};
+DIALOGUES.pro_009c = {
+  id: "pro_009c",
+  speaker: "narrator",
+  text: "\u4F60\u6CA1\u6709\u8BF4\u8BDD\u3002\u51EF\u5C14\u70B9\u4E86\u70B9\u5934\uFF0C\u597D\u50CF\u4F60\u7684\u6C89\u9ED8\u672C\u8EAB\u5C31\u662F\u4E00\u79CD\u56DE\u7B54\u3002\n\u98CE\u58F0\u91CC\uFF0C\u77F3\u7891\u8868\u9762\u6CDB\u8D77\u4E86\u4E00\u5C42\u5FAE\u5149\u3002"
+};
+DIALOGUES.pro_010 = {
+  id: "pro_010",
+  speaker: "kael",
+  text: "\u4F60\u6709\u60F3\u77E5\u9053\u7684\u4E8B\u3002\u90A3\u5C31\u53BB\u770B\u770B\u5427\u3002\u8FD9\u4E2A\u6751\u5B50\u6709\u4E09\u4E2A\u5730\u65B9\u2014\u2014\u5B83\u4EEC\u4F1A\u8BF4\u4E09\u79CD\u4E0D\u540C\u7684\u8BDD\u3002",
+  choices: [
+    { text: "\u300C\u54EA\u4E09\u4E2A\u5730\u65B9\uFF1F\u300D", next: "pro_011a" },
+    { text: "\u300C\u4F60\u60F3\u8BA9\u6211\u77E5\u9053\u4EC0\u4E48\uFF1F\u300D", next: "pro_011b" }
+  ]
+};
+DIALOGUES.pro_011a = {
+  id: "pro_011a",
+  speaker: "kael",
+  text: "\u5E7F\u573A\u4E2D\u592E\u2014\u2014\u90A3\u8FB9\u6709\u4E2A\u5751\u3002\u516D\u5929\u524D\u7838\u51FA\u6765\u7684\u3002\u91CC\u9762\u6709\u4E9B\u2026\u2026\u4E1C\u897F\u3002\n\u6751\u53E3\u7684\u53E4\u6811\u2014\u2014\u6BD4\u8FD9\u4E2A\u6751\u5B50\u8FD8\u8001\u3002\u5B83\u77E5\u9053\u4E00\u4E9B\u4EBA\u4E0D\u613F\u610F\u8BF4\u7684\u4E8B\u3002\n\u8FD8\u6709\u90A3\u5EA7\u5854\u3002\u5360\u661F\u5854\u3002\u4E0A\u4E00\u4EFB\u5360\u661F\u5E08\u8D70\u4E86\u4E4B\u540E\uFF0C\u5C31\u6CA1\u4EBA\u4E0A\u53BB\u8FC7\u4E86\u3002"
+};
+DIALOGUES.pro_011b = {
+  id: "pro_011b",
+  speaker: "kael",
+  text: "\u6211\u4E0D\u60F3\u8BA9\u4F60\u77E5\u9053\u4EC0\u4E48\u3002\u6211\u60F3\u8BA9\u4F60\u81EA\u5DF1\u53D1\u73B0\u3002\n\u5E7F\u573A\u3001\u53E4\u6811\u3001\u5854\u2014\u2014\u9009\u4E00\u4E2A\u5427\u3002"
+};
+DIALOGUES.pro_012 = {
+  id: "pro_012",
+  speaker: "narrator",
+  text: "\u51EF\u5C14\u4E0D\u518D\u8BF4\u8BDD\u3002\u4ED6\u7684\u76EE\u5149\u56DE\u5230\u77F3\u7891\u4E0A\u3002\n\u4F60\u8F6C\u8EAB\u8D70\u5411\u2026\u2026",
+  choices: [
+    { text: "\u2726 \u5E7F\u573A\u4E2D\u592E\u7684\u5751\u6D1E", next: "pro_013a", effects: { star_understanding: 1 } },
+    { text: "\u6751\u53E3\u7684\u53E4\u6811", next: "pro_013b" },
+    { text: "\u5E9F\u5F03\u7684\u5360\u661F\u5854", next: "pro_013c" }
+  ]
+};
+DIALOGUES.pro_013a = {
+  id: "pro_013a",
+  speaker: "narrator",
+  text: "\u5E7F\u573A\u4E2D\u592E\u7684\u77F3\u677F\u5730\u9762\u88AB\u7838\u51FA\u4E86\u4E00\u4E2A\u4E09\u7C73\u5BBD\u7684\u5751\u3002\u8FB9\u7F18\u7684\u77F3\u5934\u6CDB\u7740\u6697\u84DD\u8272\u7684\u5149\u3002\n\u5751\u5E95\u6563\u843D\u7740\u51E0\u5757\u53D1\u5149\u7684\u788E\u7247\u2014\u2014\u6E29\u70ED\u7684\uFF0C\u50CF\u521A\u4ECE\u706B\u91CC\u53D6\u51FA\u7684\u94C1\u3002",
+  scene: "scene_square",
+  choices: [
+    { text: "\u2726 \u89E6\u78B0\u53D1\u5149\u788E\u7247", next: "pro_014a", effects: { has_star_ember: true, affection_lyra: 1 } },
+    { text: "\u89C2\u5BDF\u5751\u8FB9\u7684\u6597\u7BF7", next: "pro_014a2", effects: { knew_previous: true, village_trust: 1 } }
+  ]
+};
+DIALOGUES.pro_014a = {
+  id: "pro_014a",
+  speaker: "narrator",
+  text: "\u4F60\u7684\u6307\u5C16\u521A\u78B0\u5230\u788E\u7247\u2014\u2014\n\u4E16\u754C\u6D88\u5931\u4E86\u3002\n\u4F60\u7AD9\u5728\u53E6\u4E00\u4E2A\u591C\u7A7A\u4E0B\u3002\u4E00\u4E2A\u5973\u4EBA\u5728\u4F60\u9762\u524D\u5C16\u53EB\u2014\u2014\u5979\u7684\u773C\u775B\u5728\u53D1\u5149\u2014\u2014\u661F\u8FB0\u4ECE\u5979\u53E3\u4E2D\u6D8C\u51FA\u2014\u2014\n\u753B\u9762\u788E\u88C2\u3002",
+  effects: { has_star_ember: true, star_understanding: 2 }
+};
+DIALOGUES.pro_014a2 = {
+  id: "pro_014a2",
+  speaker: "narrator",
+  text: "\u6597\u7BF7\u7834\u65E7\u4F46\u7528\u6599\u8003\u7A76\u2014\u2014\u4E0D\u662F\u6751\u6C11\u4F1A\u7A7F\u7684\u4E1C\u897F\u3002\u9886\u53E3\u5185\u4FA7\u7EE3\u7740\u4E00\u4E2A\u540D\u5B57\u3002\n\u4F60\u4E0D\u8BA4\u8BC6\u8FD9\u4E2A\u540D\u5B57\u3002\u4F46\u4F60\u83AB\u540D\u89C9\u5F97\u2014\u2014\u4E0A\u4E00\u4E2A\u7AD9\u5728\u8FD9\u4E2A\u5751\u8FB9\u7684\u4EBA\uFF0C\u6CA1\u80FD\u79BB\u5F00\u3002",
+  effects: { knew_previous: true }
+};
+DIALOGUES.pro_013b = {
+  id: "pro_013b",
+  speaker: "narrator",
+  text: "\u53E4\u6811\u6BD4\u4F60\u5728\u8FDC\u5904\u770B\u5230\u7684\u66F4\u5927\u3002\u4E3B\u5E72\u9700\u8981\u4E94\u516D\u4E2A\u4EBA\u624D\u80FD\u5408\u62B1\u3002\u6811\u76AE\u4E0A\u523B\u6EE1\u4E86\u5BC6\u5BC6\u9EBB\u9EBB\u7684\u7B26\u6587\u2014\u2014\u6709\u4E9B\u662F\u65B0\u7684\uFF0C\u6709\u4E9B\u5DF2\u7ECF\u6A21\u7CCA\u5F97\u50CF\u4F24\u75A4\u3002",
+  scene: "scene_tree",
+  choices: [
+    { text: "\u89E6\u6478\u6811\u5E72\u4E0A\u7684\u7B26\u6587", next: "pro_014b", effects: { star_understanding: 1 } },
+    { text: "\u95ED\u4E0A\u773C\u775B\u542C\u98CE\u58F0", next: "pro_014b2" }
+  ]
+};
+DIALOGUES.pro_014b = {
+  id: "pro_014b",
+  speaker: "narrator",
+  text: "\u4F60\u7684\u624B\u638C\u8D34\u4E0A\u6811\u76AE\u7684\u77AC\u95F4\uFF0C\u4E00\u9635\u4F4E\u6C89\u7684\u55E1\u9E23\u7A7F\u8FC7\u4F60\u7684\u9AA8\u5934\u3002\n\u4E0D\u662F\u58F0\u97F3\u2014\u2014\u662F\u9707\u52A8\u3002\u4E00\u79CD\u4ECE\u5730\u5E95\u6DF1\u5904\u6D8C\u4E0A\u6765\u7684\u3001\u7F13\u6162\u7684\u8109\u52A8\u3002\n\u7136\u540E\u4F60\u7406\u89E3\u4E86\uFF1A\u8FD9\u68F5\u6811\u5728\u6015\u3002\u5B83\u5728\u8BD5\u56FE\u628A\u81EA\u5DF1\u4ECE\u571F\u91CC\u62D4\u51FA\u6765\u3002",
+  effects: { star_understanding: 1 }
+};
+DIALOGUES.pro_014b2 = {
+  id: "pro_014b2",
+  speaker: "narrator",
+  text: "\u98CE\u7A7F\u8FC7\u679D\u53F6\uFF0C\u53D1\u51FA\u7C7B\u4F3C\u4EBA\u58F0\u7684\u4F4E\u8BED\u3002\n\u4F60\u5F97\u52AA\u529B\u624D\u80FD\u542C\u6E05\u2014\u2014\u6216\u8005\u8BF4\uFF0C\u4F60\u5F97\u52AA\u529B\u624D\u80FD\u627F\u8BA4\u4F60\u542C\u6E05\u4E86\uFF1A\n\u300C\u2026\u2026\u79BB\u5F00\u2026\u2026\u5728\u6700\u540E\u4E00\u9897\u661F\u7184\u706D\u4E4B\u524D\u2026\u2026\u300D"
+};
+DIALOGUES.pro_013c = {
+  id: "pro_013c",
+  speaker: "narrator",
+  text: "\u5854\u5185\u7684\u87BA\u65CB\u697C\u68AF\u79EF\u6EE1\u4E86\u7070\u5C18\u3002\u5899\u58C1\u4E0A\u6BCF\u9694\u51E0\u6B65\u5C31\u6709\u4E00\u4E2A\u51F9\u69FD\u2014\u2014\u66FE\u7ECF\u653E\u8721\u70DB\u7684\u5730\u65B9\u3002\n\u4F60\u722C\u5230\u9876\u5C42\u3002\u4E00\u6247\u534A\u63A9\u7684\u6728\u95E8\u5916\uFF0C\u900F\u51FA\u5FAE\u5F31\u7684\u5149\u3002",
+  scene: "scene_tower",
+  choices: [
+    { text: "\u63A8\u95E8\u8FDB\u53BB", next: "pro_014c" },
+    { text: "\u5148\u542C\u95E8\u5185\u7684\u52A8\u9759", next: "pro_014c2" }
+  ]
+};
+DIALOGUES.pro_014c = {
+  id: "pro_014c",
+  speaker: "narrator",
+  text: "\u95E8\u5F00\u4E86\u3002\u4E00\u5E45\u5DE8\u5927\u7684\u661F\u56FE\u8986\u76D6\u4E86\u6574\u4E2A\u5706\u5F62\u5730\u677F\u3002\n\u661F\u5EA7\u7684\u7EBF\u6761\u8FD8\u5728\uFF0C\u4F46\u6BCF\u4E00\u9897\u661F\u8FB0\u7684\u4F4D\u7F6E\u90FD\u88AB\u91CD\u65B0\u6807\u6CE8\u8FC7\u2014\u2014\u7528\u98A4\u6296\u7684\u624B\u3002\n\u4F60\u8E72\u4E0B\u6765\u4ED4\u7EC6\u770B\u3002\u6240\u6709\u7684\u661F\u8FB0\u2014\u2014\u4E0D\u8BBA\u539F\u672C\u5C5E\u4E8E\u54EA\u4E2A\u661F\u5EA7\u2014\u2014\u90FD\u5728\u5411\u540C\u4E00\u4E2A\u70B9\u79FB\u52A8\u3002",
+  effects: { star_understanding: 1 }
+};
+DIALOGUES.pro_014c2 = {
+  id: "pro_014c2",
+  speaker: "narrator",
+  text: "\u6CA1\u6709\u4EBA\u3002\u4F60\u63A8\u5F00\u95E8\u3002\n\u623F\u95F4\u91CC\u53EA\u6709\u4E00\u5F20\u6B6A\u5012\u7684\u4E66\u684C\u548C\u4E00\u5730\u6563\u843D\u7684\u7EB8\u5F20\u3002\u4F60\u6361\u8D77\u6700\u4E0A\u9762\u7684\u4E00\u5F20\u2014\u2014\n\u300C\u5012\u6570\u7B2C\u5341\u4E03\u65E5\u3002\u6211\u80FD\u542C\u89C1\u5B83\u4EEC\u4E86\u3002\u5B83\u4EEC\u5728\u53EB\u4E00\u4E2A\u4EBA\u7684\u540D\u5B57\u3002\u300D",
+  effects: { star_understanding: 1, knew_previous: true }
+};
+DIALOGUES.pro_015 = {
+  id: "pro_015",
+  speaker: "narrator",
+  text: "\u4F60\u56DE\u5230\u5E7F\u573A\u65F6\uFF0C\u6751\u6C11\u5DF2\u7ECF\u6563\u53BB\u4E86\u3002\u77F3\u7891\u65C1\u7A7A\u65E0\u4E00\u4EBA\u2014\u2014\u51EF\u5C14\u4E0D\u89C1\u4E86\u3002\n\u4F46\u53E6\u4E00\u4E2A\u4EBA\u5728\u3002",
+  scene: "scene_square"
+};
+DIALOGUES.pro_016 = {
+  id: "pro_016",
+  speaker: "lyra",
+  text: "\u4E09\u9009\u4E00\u3002\u4F60\u53EA\u53BB\u4E86\u4E00\u4E2A\u3002"
+};
+DIALOGUES.pro_017 = {
+  id: "pro_017",
+  speaker: "lyra",
+  text: "\u6709\u610F\u601D\u2014\u2014\u5927\u591A\u6570\u4EBA\u90FD\u4F1A\u62FC\u547D\u60F3\u770B\u5B8C\u6240\u6709\u4E09\u4E2A\u5730\u65B9\u3002\u597D\u50CF\u77E5\u9053\u4E86\u5168\u90E8\uFF0C\u5C31\u80FD\u638C\u63A7\u4EC0\u4E48\u4F3C\u7684\u3002",
+  choices: [
+    { text: "\u300C\u4F60\u662F\u8C01\uFF1F\u300D", next: "pro_018a" },
+    { text: "\u300C\u4F60\u8DDF\u8E2A\u6211\uFF1F\u300D", next: "pro_018b", effects: { affection_lyra: -1 } },
+    { text: "\uFF08\u6C89\u9ED8\u5730\u770B\u5979\uFF09", next: "pro_018c", effects: { affection_lyra: 2 } }
+  ]
+};
+DIALOGUES.pro_018a = {
+  id: "pro_018a",
+  speaker: "lyra",
+  text: "\u8389\u62C9\u3002\u7A83\u661F\u8005\u3002\u4F60\u53EF\u4EE5\u7528\u8FD9\u4E2A\u79F0\u547C\u2014\u2014\u53CD\u6B63\u51EF\u5C14\u4ED6\u4EEC\u4E5F\u662F\u8FD9\u4E48\u53EB\u6211\u7684\u3002"
+};
+DIALOGUES.pro_018b = {
+  id: "pro_018b",
+  speaker: "lyra",
+  text: "\u8DDF\u8E2A\uFF1F\u8FD9\u4E2A\u6751\u5B50\u53EA\u6709\u5DF4\u638C\u5927\u3002\u4F60\u7AD9\u5728\u90A3\u91CC\u50CF\u4E00\u68F5\u8FF7\u8DEF\u7684\u6811\u2014\u2014\u4E0D\u9700\u8981\u8DDF\u8E2A\u3002"
+};
+DIALOGUES.pro_018c = {
+  id: "pro_018c",
+  speaker: "lyra",
+  text: "\uFF08\u5979\u5FAE\u5FAE\u4E00\u6014\u3002\u7136\u540E\u7B11\u4E86\u2014\u2014\u4E00\u79CD\u5F88\u6DE1\u7684\u3001\u51E0\u4E4E\u770B\u4E0D\u51FA\u6765\u7684\u7B11\u3002\uFF09"
+};
+DIALOGUES.pro_019 = {
+  id: "pro_019",
+  speaker: "lyra",
+  text: "\u51EF\u5C14\u8DDF\u4F60\u8BF4\u4E86\u591A\u5C11\uFF1F\u5173\u4E8E\u8FD9\u4E2A\u6751\u5B50\u7684\u4E8B\u3002",
+  choices: [
+    { text: "\u300C\u8BF4\u4E86\u661F\u843D\u7684\u4E8B\u2014\u2014\u516D\u767E\u5E74\u4E00\u6B21\u300D", next: "pro_020a", effects: { village_trust: 1 } },
+    { text: "\u300C\u4ED6\u4EC0\u4E48\u4E5F\u6CA1\u8BF4\u6E05\u300D", next: "pro_020b", effects: { affection_lyra: 1 } },
+    { text: "\u300C\u4F60\u4E3A\u4EC0\u4E48\u4E0D\u81EA\u5DF1\u544A\u8BC9\u6211\uFF1F\u300D", next: "pro_020c", effects: { affection_lyra: 2 } }
+  ]
+};
+DIALOGUES.pro_020a = {
+  id: "pro_020a",
+  speaker: "lyra",
+  text: "\u54C8\u3002\u4ED6\u628A\u6700\u96BE\u542C\u7684\u90E8\u5206\u85CF\u8D77\u6765\u4E86\u3002\u51EF\u5C14\u5C31\u662F\u8FD9\u6837\u2014\u2014\u7528\u771F\u76F8\u7684\u4E00\u90E8\u5206\u76D6\u4F4F\u53E6\u4E00\u90E8\u5206\u3002\u4ED6\u8BF4\u4E86\u661F\u9009\u5417\uFF1F\u8BF4\u4E86\u4E0A\u4E00\u4E2A\u88AB\u9009\u4E2D\u7684\u4EBA\u600E\u4E48\u6837\u4E86\u5417\uFF1F"
+};
+DIALOGUES.pro_020b = {
+  id: "pro_020b",
+  speaker: "lyra",
+  text: "\u5F53\u7136\u8BF4\u4E0D\u6E05\u3002\u8BF4\u5F97\u592A\u6E05\u695A\uFF0C\u4EBA\u5C31\u8DD1\u4E86\u3002\u8FD9\u4E2A\u6751\u5B50\u7559\u4E0D\u4F4F\u4EBA\u7684\u65B9\u5F0F\u4E0D\u662F\u7528\u5899\u2014\u2014\u662F\u7528\u79D8\u5BC6\u3002"
+};
+DIALOGUES.pro_020c = {
+  id: "pro_020c",
+  speaker: "lyra",
+  text: "\uFF08\u5979\u628A\u5934\u5FAE\u5FAE\u504F\u4E86\u4E00\u4E0B\uFF0C\u50CF\u662F\u5728\u91CD\u65B0\u6253\u91CF\u4F60\u3002\uFF09\n\u76F4\u63A5\u3002\u884C\u3002\u90A3\u6211\u544A\u8BC9\u4F60\u2014\u2014\u8FD9\u4E2A\u6751\u5B50\u5728\u5403\u4EBA\u3002"
+};
+DIALOGUES.pro_021 = {
+  id: "pro_021",
+  speaker: "lyra",
+  text: "\u6BCF\u516D\u767E\u5E74\uFF0C\u661F\u8FB0\u5931\u5E8F\u3002\u4E0A\u4E00\u6B21\uFF0C\u4ED6\u4EEC\u9009\u4E86\u300C\u661F\u9009\u8005\u300D\u6765\u4FEE\u590D\u5929\u7A7A\u3002\n\u90A3\u4E2A\u4EBA\u75AF\u4E86\u3002\u7136\u540E\u6B7B\u4E86\u3002\u7136\u540E\u88AB\u57CB\u5728\u90A3\u5757\u77F3\u7891\u4E0B\u9762\u3002",
+  choices: [
+    { text: "\u300C\u4F60\u5C31\u662F\u56E0\u4E3A\u8FD9\u4E2A\u60F3\u79BB\u5F00\uFF1F\u300D", next: "pro_022a", effects: { affection_lyra: 1 } },
+    { text: "\u300C\u51EF\u5C14\u8BF4\u4F60\u662F\u7A83\u661F\u8005\u2014\u2014\u4EC0\u4E48\u610F\u601D\uFF1F\u300D", next: "pro_022b" },
+    { text: "\u300C\u6211\u9700\u8981\u505A\u4EC0\u4E48\uFF1F\u300D", next: "pro_022c", effects: { village_trust: -1 } }
+  ]
+};
+DIALOGUES.pro_022a = {
+  id: "pro_022a",
+  speaker: "lyra",
+  text: "\u6211\u4E09\u5E74\u524D\u5C31\u60F3\u8D70\u3002\u8D70\u5230\u6751\u53E3\uFF0C\u6298\u8FD4\u4E86\u3002\n\u4E0D\u77E5\u9053\u56E0\u4E3A\u4EC0\u4E48\u3002\u4E5F\u8BB8\u56E0\u4E3A\u6211\u4E5F\u60F3\u77E5\u9053\u7B54\u6848\u3002"
+};
+DIALOGUES.pro_022b = {
+  id: "pro_022b",
+  speaker: "lyra",
+  text: "\u7A83\u661F\u8005\u2014\u2014\u56E0\u4E3A\u6211\u5077\u661F\u661F\u7684\u529B\u91CF\u3002\n\u51EF\u5C14\u7684\u5B88\u661F\u6D3E\u60F3\u4FEE\u590D\u9635\u5217\uFF0C\u7EF4\u6301\u65E7\u79E9\u5E8F\u3002\u9A6C\u5E93\u65AF\u7684\u5F03\u661F\u6D3E\u60F3\u6BC1\u6389\u4E00\u5207\u8BA9\u5927\u5BB6\u79BB\u5F00\u3002\n\u6211\uFF1F\u6211\u60F3\u7B2C\u4E09\u79CD\u529E\u6CD5\u3002"
+};
+DIALOGUES.pro_022c = {
+  id: "pro_022c",
+  speaker: "lyra",
+  text: "\uFF08\u5979\u76EF\u7740\u4F60\u770B\u4E86\u4E24\u79D2\u3002\u76EE\u5149\u91CC\u6709\u4E00\u79CD\u4F60\u8BFB\u4E0D\u61C2\u7684\u4E1C\u897F\u3002\uFF09\n\u4F60\u786E\u5B9A\u4F60\u60F3\uFF1F\u4E0A\u4E00\u4E2A\u300C\u4E3B\u52A8\u60F3\u505A\u300D\u7684\u4EBA\uFF0C\u5DF2\u7ECF\u75AF\u4E86\u3002"
+};
+DIALOGUES.pro_023 = {
+  id: "pro_023",
+  speaker: "lyra",
+  text: "\u542C\u597D\u3002\u5929\u4EAE\u4E4B\u524D\u6211\u8FD8\u5728\u8FD9\u4E2A\u6751\u5B50\u91CC\u3002\u4E4B\u540E\u2014\u2014\u4E0D\u4E00\u5B9A\u3002\n\u4F60\u5982\u679C\u60F3\u542C\u771F\u6B63\u7684\u7B54\u6848\u2026\u2026\u6765\u5360\u661F\u5854\u3002\u660E\u665A\uFF0C\u7B49\u6240\u6709\u4EBA\u90FD\u7761\u4E86\u3002",
+  choices: [
+    { text: "\u300C\u6211\u4F1A\u53BB\u7684\u300D", next: "pro_024a", effects: { affection_lyra: 2 } },
+    { text: "\u300C\u6211\u4E3A\u4EC0\u4E48\u8981\u4FE1\u4F60\uFF1F\u300D", next: "pro_024b", effects: { village_trust: -1 } },
+    { text: "\u300C\u4F60\u6015\u4EC0\u4E48\uFF1F\u300D", next: "pro_024c", effects: { affection_lyra: 1 } }
+  ]
+};
+DIALOGUES.pro_024a = {
+  id: "pro_024a",
+  speaker: "lyra",
+  text: "\uFF08\u5979\u6CA1\u6709\u7B11\u3002\u4F46\u5979\u773C\u775B\u91CC\u6709\u5149\u95EA\u4E86\u4E00\u4E0B\u3002\uFF09\n\u597D\u3002\u522B\u544A\u8BC9\u51EF\u5C14\u3002"
+};
+DIALOGUES.pro_024b = {
+  id: "pro_024b",
+  speaker: "lyra",
+  text: "\u4F60\u4E0D\u7528\u4FE1\u6211\u3002\u4F46\u4F60\u4E5F\u4E0D\u4FE1\u51EF\u5C14\u2014\u2014\u6211\u770B\u5F97\u51FA\u6765\u3002\u4F60\u8C01\u90FD\u4E0D\u4FE1\u3002\u8FD9\u633A\u597D\u3002\u81F3\u5C11\u4F60\u4E0D\u4F1A\u88AB\u4EBA\u5F53\u5200\u5B50\u4F7F\u3002"
+};
+DIALOGUES.pro_024c = {
+  id: "pro_024c",
+  speaker: "lyra",
+  text: "\uFF08\u5979\u6C89\u9ED8\u4E86\u4E00\u4F1A\u513F\u3002\uFF09\n\u6211\u6015\u7684\u4E0D\u662F\u6211\u60F3\u8C61\u4E2D\u7684\u4E1C\u897F\u3002\u6211\u6015\u7684\u662F\u2014\u2014\u90A3\u4E9B\u6211\u660E\u660E\u77E5\u9053\u5374\u5047\u88C5\u4E0D\u77E5\u9053\u7684\u4E8B\u3002"
+};
+DIALOGUES.pro_025 = {
+  id: "pro_025",
+  speaker: "narrator",
+  text: "\u8389\u62C9\u8F6C\u8EAB\u8D70\u5165\u5C4B\u820D\u4E4B\u95F4\u7684\u9634\u5F71\u4E2D\u3002\u5979\u7684\u811A\u6B65\u58F0\u5F88\u5FEB\u5C31\u542C\u4E0D\u89C1\u4E86\u2014\u2014\u5C31\u50CF\u5979\u4ECE\u6765\u6CA1\u6709\u51FA\u73B0\u8FC7\u3002"
+};
+DIALOGUES.pro_026 = {
+  id: "pro_026",
+  speaker: "lyra",
+  text: "\u5BF9\u4E86\u3002\u4F60\u7684\u540D\u5B57\u4E0D\u91CD\u8981\u3002\n\u91CD\u8981\u7684\u662F\u2014\u2014\u4F60\u5DF2\u7ECF\u9009\u4E86\u3002\u4ECE\u4F60\u8E0F\u8FDB\u8FD9\u4E2A\u6751\u5B50\u7684\u90A3\u4E00\u523B\u8D77\u3002"
+};
+DIALOGUES.pro_027 = {
+  id: "pro_027",
+  speaker: "narrator",
+  text: "\u591C\u98CE\u5377\u8FC7\u5E7F\u573A\u3002\u5934\u9876\u7684\u661F\u7FA4\u96C6\u4F53\u98A4\u52A8\u4E86\u4E00\u4E0B\uFF0C\u50CF\u4E00\u5927\u7FA4\u53D7\u60CA\u7684\u9E1F\u3002"
+};
+DIALOGUES.pro_028 = {
+  id: "pro_028",
+  speaker: "narrator",
+  text: "\u3010\u5E8F\u5E55 \xB7 \u5B8C\u3011\n\n\u661F\u843D\u6751\u7684\u7B2C\u4E00\u591C\u7ED3\u675F\u4E86\u3002\n\u4F60\u77E5\u9053\u4E86\u4E09\u4E2A\u5730\u65B9\u3001\u4E09\u4E2A\u540D\u5B57\u3001\u4E09\u4E2A\u65B9\u5411\u3002\n\u4F46\u8FD8\u4E0D\u77E5\u9053\u2014\u2014\u4F60\u4F1A\u9009\u54EA\u4E00\u4E2A\u3002",
+  effects: { prologue_complete: true }
+};
+DIALOGUES.ch1_001 = {
+  id: "ch1_001",
+  speaker: "narrator",
+  text: "\u4F60\u5728\u6751\u5B50\u7684\u5BA2\u6808\u9192\u6765\u3002\u7A97\u5916\uFF0C\u5929\u5DF2\u7ECF\u4EAE\u4E86\u2014\u2014\u4F46\u661F\u7A7A\u4ECD\u7136\u9690\u7EA6\u53EF\u89C1\u3002\n\u767D\u5929\u548C\u9ED1\u591C\u7684\u754C\u9650\u6B63\u5728\u6A21\u7CCA\u3002",
+  scene: "scene_square"
+};
+DIALOGUES.ch1_002 = {
+  id: "ch1_002",
+  speaker: "narrator",
+  text: "\u6709\u4EBA\u5728\u4F60\u95E8\u7F1D\u4E0B\u585E\u4E86\u4E00\u5F20\u7EB8\u6761\u3002\n\u7EB8\u4E0A\u7684\u5B57\u8FF9\u5F88\u7528\u529B\uFF0C\u50CF\u662F\u523B\u4E0A\u53BB\u7684\uFF1A\n\u300C\u53E4\u6811\u4E0B\u3002\u6B63\u5348\u4E4B\u524D\u3002\u2014\u2014\u51EF\u5C14\u300D",
+  choices: [
+    { text: "\u9A6C\u4E0A\u53BB\u53E4\u6811\u89C1\u51EF\u5C14", next: "ch1_003a", effects: { affection_kael: 1 } },
+    { text: "\u5148\u5728\u6751\u5B50\u91CC\u8F6C\u4E00\u5708", next: "ch1_003b" }
+  ]
+};
+DIALOGUES.ch1_003a = {
+  id: "ch1_003a",
+  speaker: "narrator",
+  text: "\u4F60\u8D70\u51FA\u5BA2\u6808\uFF0C\u6E05\u6668\u7684\u7A7A\u6C14\u4E2D\u6709\u4E00\u80A1\u70E7\u7126\u7684\u5473\u9053\u3002\u4E0D\u662F\u706B\u707E\u2014\u2014\u662F\u522B\u7684\u4E1C\u897F\u3002\n\u4F60\u5411\u6751\u53E3\u7684\u53E4\u6811\u8D70\u53BB\u3002",
+  scene: "scene_tree"
+};
+DIALOGUES.ch1_003b = {
+  id: "ch1_003b",
+  speaker: "narrator",
+  text: "\u4F60\u5728\u6751\u5B50\u91CC\u8D70\u4E86\u4E00\u5708\u3002\u5927\u90E8\u5206\u5C4B\u5B50\u95E8\u7A97\u7D27\u95ED\u3002\u94C1\u5320\u94FA\u4F20\u6765\u7684\u9524\u58F0\u662F\u552F\u4E00\u7684\u58F0\u97F3\u3002\n\u4F60\u671D\u94C1\u5320\u94FA\u8D70\u53BB\u2014\u2014\u7136\u540E\u53C8\u6298\u8FD4\u56DE\u6765\u3002\u8FD8\u4E0D\u662F\u65F6\u5019\u3002\u5148\u53BB\u770B\u770B\u51EF\u5C14\u60F3\u8BF4\u4EC0\u4E48\u3002",
+  scene: "scene_tree",
+  effects: { affection_marcus: -1 }
+};
+DIALOGUES.ch1_004 = {
+  id: "ch1_004",
+  speaker: "kael",
+  text: "\u4F60\u6765\u4E86\u3002",
+  scene: "scene_tree"
+};
+DIALOGUES.ch1_005 = {
+  id: "ch1_005",
+  speaker: "kael",
+  text: "\u6628\u665A\u89C1\u8FC7\u8389\u62C9\u4E86\u3002"
+};
+DIALOGUES.ch1_006 = {
+  id: "ch1_006",
+  speaker: "kael",
+  text: "\u4F60\u4E0D\u7528\u56DE\u7B54\u3002\u8FD9\u4E2A\u6751\u5B50\u6CA1\u6709\u79D8\u5BC6\u2014\u2014\u81F3\u5C11\u5BF9\u6211\u6765\u8BF4\u3002",
+  choices: [
+    { text: "\u300C\u5979\u8BF4\u8FD9\u4E2A\u6751\u5728\u5403\u4EBA\u300D", next: "ch1_007a", effects: { village_trust: 1 } },
+    { text: "\u300C\u5979\u8BA9\u6211\u522B\u544A\u8BC9\u4F60\u300D", next: "ch1_007b", effects: { affection_kael: 1 } },
+    { text: "\uFF08\u6C89\u9ED8\uFF09", next: "ch1_007c" }
+  ]
+};
+DIALOGUES.ch1_007a = {
+  id: "ch1_007a",
+  speaker: "kael",
+  text: "\uFF08\u4ED6\u95ED\u4E86\u4E00\u4F1A\u513F\u773C\u775B\u3002\uFF09\n\u5979\u8BF4\u7684\u4E0D\u5B8C\u5168\u662F\u9519\u7684\u3002\u4F46\u8FD9\u4E2A\u6751\u5B50\u4E0D\u662F\u5403\u4EBA\u2014\u2014\u5B83\u662F\u2026\u2026\u5438\u6536\u3002\u7559\u4E0B\u6765\u7684\u4EBA\uFF0C\u4F1A\u6162\u6162\u53D8\u6210\u5B83\u7684\u4E00\u90E8\u5206\u3002"
+};
+DIALOGUES.ch1_007b = {
+  id: "ch1_007b",
+  speaker: "kael",
+  text: "\u554A\u3002\u5979\u786E\u5B9E\u4F1A\u8BF4\u8FD9\u79CD\u8BDD\u3002\u90A3\u5B69\u5B50\u4E0D\u559C\u6B22\u88AB\u4EBA\u770B\u900F\u3002"
+};
+DIALOGUES.ch1_007c = {
+  id: "ch1_007c",
+  speaker: "kael",
+  text: "\u4F60\u7684\u6C89\u9ED8\u2026\u2026\u6709\u65F6\u5019\u6BD4\u4F60\u8BF4\u8BDD\u66F4\u80FD\u8BF4\u660E\u95EE\u9898\u3002"
+};
+DIALOGUES.ch1_008 = {
+  id: "ch1_008",
+  speaker: "kael",
+  text: "\u6211\u627E\u4F60\u6765\uFF0C\u4E0D\u662F\u4E3A\u4E86\u804A\u8389\u62C9\u7684\u3002\u6211\u9700\u8981\u4F60\u5E2E\u6211\u505A\u4E00\u4EF6\u4E8B\u3002"
+};
+DIALOGUES.ch1_009 = {
+  id: "ch1_009",
+  speaker: "kael",
+  text: "\u661F\u8FB0\u9635\u5217\u2014\u2014\u4F60\u77E5\u9053\u5B83\u662F\u4EC0\u4E48\u5417\uFF1F",
+  choices: [
+    { text: "\u300C\u4F60\u6628\u665A\u8BF4\u7684\u4FEE\u590D\u5929\u7A7A\u7684\u529E\u6CD5\u300D", next: "ch1_010a", effects: { star_understanding: 1 } },
+    { text: "\u300C\u6211\u4EC0\u4E48\u4E5F\u4E0D\u77E5\u9053\u300D", next: "ch1_010b" }
+  ]
+};
+DIALOGUES.ch1_010a = {
+  id: "ch1_010a",
+  speaker: "kael",
+  text: "\u5BF9\u3002\u9635\u5217\u662F\u516D\u767E\u5E74\u524D\u7ACB\u4E0B\u7684\u2014\u2014\u7528\u661F\u8FB0\u672C\u8EAB\u7684\u80FD\u91CF\uFF0C\u7EC7\u6210\u4E00\u5F20\u7F51\uFF0C\u628A\u5929\u7A7A\u56FA\u5B9A\u5728\u6B63\u786E\u7684\u4F4D\u7F6E\u3002\n\u4F46\u73B0\u5728\u7F51\u7834\u4E86\u3002\u6211\u9700\u8981\u4F60\u5E2E\u6211\u4FEE\u8865\u5B83\u3002"
+};
+DIALOGUES.ch1_010b = {
+  id: "ch1_010b",
+  speaker: "kael",
+  text: "\u9635\u5217\u3002\u5D4C\u5728\u6751\u5916\u5730\u8109\u4E2D\u7684\u661F\u8FB0\u80FD\u91CF\u7F51\u3002\u516D\u767E\u5E74\u524D\uFF0C\u661F\u9009\u8005\u7528\u751F\u547D\u628A\u5B83\u7ACB\u8D77\u6765\u7684\u3002\n\u73B0\u5728\u5B83\u5728\u5D29\u6E83\u3002\u6211\u9700\u8981\u4F60\u5E2E\u6211\u4FEE\u3002"
+};
+DIALOGUES.ch1_011 = {
+  id: "ch1_011",
+  speaker: "kael",
+  text: "\u4F46\u4F60\u5F97\u77E5\u9053\u2014\u2014\u4FEE\u590D\u9635\u5217\u9700\u8981\u300C\u951A\u300D\u3002\u4E00\u4E2A\u6D3B\u7740\u7684\u4EBA\uFF0C\u7AD9\u5728\u9635\u773C\u4E0A\uFF0C\u7528\u81EA\u5DF1\u7684\u751F\u547D\u80FD\u91CF\u628A\u661F\u8FB0\u62C9\u56DE\u539F\u4F4D\u3002",
+  choices: [
+    { text: "\u300C\u4F60\u662F\u60F3\u8BA9\u6211\u5F53\u8FD9\u4E2A\u951A\uFF1F\u300D", next: "ch1_012a", effects: { village_trust: -1 } },
+    { text: "\u300C\u4E0A\u4E00\u4EFB\u951A\u662F\u8C01\uFF1F\u300D", next: "ch1_012b", effects: { star_understanding: 1 } }
+  ]
+};
+DIALOGUES.ch1_012a = {
+  id: "ch1_012a",
+  speaker: "kael",
+  text: "\uFF08\u4ED6\u7684\u76EE\u5149\u907F\u5F00\u4E86\u4F60\u3002\uFF09\n\u6211\u60F3\u2026\u2026\u4F46\u4E0D\u662F\u6211\u51B3\u5B9A\u3002\u662F\u661F\u8FB0\u9009\u7684\u3002\u6211\u53EA\u662F\u2026\u2026\u77E5\u9053\u5B83\u4F1A\u9009\u8C01\u3002"
+};
+DIALOGUES.ch1_012b = {
+  id: "ch1_012b",
+  speaker: "kael",
+  text: "\uFF08\u6C89\u9ED8\u4E86\u5F88\u4E45\u3002\uFF09\n\u6211\u5F1F\u5F1F\u3002"
+};
+DIALOGUES.ch1_013 = {
+  id: "ch1_013",
+  speaker: "kael",
+  text: "\u4ED6\u53EB\u4E9A\u745F\u3002\u516D\u5341\u5E74\u524D\u4ED6\u88AB\u9009\u4E3A\u661F\u9009\u8005\u3002\u4ED6\u4FEE\u590D\u4E86\u9635\u5217\u2014\u2014\u4EE3\u4EF7\u662F\u6C38\u8FDC\u7559\u5728\u4E86\u9635\u773C\u91CC\u3002\n\u4F60\u4EE5\u4E3A\u6211\u4E3A\u4EC0\u4E48\u5728\u8FD9\u91CC\uFF1F\u6211\u4E0D\u662F\u300C\u5B88\u7891\u4EBA\u300D\u3002\u6211\u662F\u5B88\u5893\u4EBA\u3002",
+  effects: { knew_previous: true }
+};
+DIALOGUES.ch1_014 = {
+  id: "ch1_014",
+  speaker: "kael",
+  text: "\u6211\u9700\u8981\u65F6\u95F4\u53BB\u60F3\u3002\u4F46\u5982\u679C\u4F60\u613F\u610F\u5E2E\u6211\u2014\u2014\u5929\u9ED1\u524D\u5230\u9635\u5217\u5165\u53E3\u6765\u627E\u6211\u3002",
+  choices: [
+    { text: "\u300C\u6211\u4F1A\u8003\u8651\u7684\u300D", next: "ch1_015a", effects: { affection_kael: 1 } },
+    { text: "\u300C\u6211\u4E0D\u786E\u5B9A\u6211\u4FE1\u4F60\u300D", next: "ch1_015b", effects: { village_trust: -1 } },
+    { text: "\u300C\u6211\u8981\u5148\u542C\u542C\u522B\u4EBA\u600E\u4E48\u8BF4\u300D", next: "ch1_015c", effects: { star_understanding: 1 } }
+  ]
+};
+DIALOGUES.ch1_015a = {
+  id: "ch1_015a",
+  speaker: "kael",
+  text: "\u8003\u8651\u5C31\u597D\u3002\u4E0D\u6025\u7740\u7B54\u5E94\u3002\u4F46\u6211\u5F97\u63D0\u9192\u4F60\u2014\u2014\u65F6\u95F4\u4E0D\u591A\u4E86\u3002"
+};
+DIALOGUES.ch1_015b = {
+  id: "ch1_015b",
+  speaker: "kael",
+  text: "\u4E0D\u76F8\u4FE1\u6211\uFF0C\u662F\u667A\u8005\u7684\u9009\u62E9\u3002\u516D\u5341\u5E74\u524D\u4E9A\u745F\u4FE1\u4E86\u6211\u2014\u2014\u770B\u770B\u4ED6\u7684\u7ED3\u5C40\u3002"
+};
+DIALOGUES.ch1_015c = {
+  id: "ch1_015c",
+  speaker: "kael",
+  text: "\u9A6C\u5E93\u65AF\u5417\uFF1F\u8FD8\u662F\u8389\u62C9\uFF1F\n\u53BB\u5427\u3002\u542C\u542C\u4ED6\u4EEC\u600E\u4E48\u8BF4\u3002\u7136\u540E\u770B\u770B\u4F60\u8FD8\u80FD\u4FE1\u8C01\u3002"
+};
+DIALOGUES.ch1_016 = {
+  id: "ch1_016",
+  speaker: "narrator",
+  text: "\u94C1\u5320\u94FA\u7684\u9524\u58F0\u6CA1\u6709\u56E0\u4E3A\u4F60\u7684\u5230\u6765\u800C\u505C\u4E0B\u3002",
+  scene: "scene_square"
+};
+DIALOGUES.ch1_017 = {
+  id: "ch1_017",
+  speaker: "narrator",
+  text: "\u4E00\u4E2A\u5149\u7740\u4E0A\u8EAB\u7684\u7537\u4EBA\u6B63\u5728\u6572\u6253\u4E00\u5757\u6697\u7EA2\u8272\u7684\u94C1\u3002\u6C57\u6C34\u5728\u4ED6\u80CC\u4E0A\u753B\u51FA\u6C9F\u58D1\u3002\n\u4ED6\u6CA1\u6709\u62AC\u5934\u770B\u4F60\u3002"
+};
+DIALOGUES.ch1_018 = {
+  id: "ch1_018",
+  speaker: "marcus",
+  text: "\u51EF\u5C14\u8BA9\u4F60\u6765\u7684\uFF1F"
+};
+DIALOGUES.ch1_019 = {
+  id: "ch1_019",
+  speaker: "marcus",
+  text: "\u55EF\u3002\u731C\u5230\u4E86\u3002",
+  choices: [
+    { text: "\u300C\u4F60\u600E\u4E48\u77E5\u9053\uFF1F\u300D", next: "ch1_020a" },
+    { text: "\u300C\u6211\u81EA\u5DF1\u8981\u6765\u7684\u300D", next: "ch1_020b", effects: { affection_marcus: 1 } }
+  ]
+};
+DIALOGUES.ch1_020a = {
+  id: "ch1_020a",
+  speaker: "marcus",
+  text: "\u8FD9\u4E2A\u6751\u5B50\u4E0D\u4EA7\u94C1\u3002\u6BCF\u4E00\u5757\u94C1\u90FD\u662F\u4ECE\u5916\u9762\u8FD0\u8FDB\u6765\u7684\u3002\n\u6BCF\u8FD0\u4E00\u6B21\uFF0C\u5C31\u5C11\u4E00\u4E2A\u4EBA\u613F\u610F\u8FD0\u3002\u51EF\u5C14\u9700\u8981\u4F60\u3002\u6240\u4EE5\u4ED6\u4F1A\u8BA9\u4F60\u6765\u627E\u6211\u3002"
+};
+DIALOGUES.ch1_020b = {
+  id: "ch1_020b",
+  speaker: "marcus",
+  text: "\uFF08\u4ED6\u505C\u4E86\u4E00\u4E0B\u9524\u5B50\uFF0C\u770B\u4E86\u4F60\u4E00\u773C\u3002\uFF09\n\u597D\u3002"
+};
+DIALOGUES.ch1_021 = {
+  id: "ch1_021",
+  speaker: "marcus",
+  text: "\u51EF\u5C14\u8DDF\u4F60\u8BF4\u4E86\u9635\u5217\u7684\u4E8B\u3002\u4ED6\u8BF4\u8981\u4FEE\u590D\u3002",
+  choices: [
+    { text: "\u300C\u5BF9\u3002\u4ED6\u60F3\u8BA9\u6211\u5F53\u951A\u300D", next: "ch1_022a" },
+    { text: "\u300C\u4ED6\u53EA\u8BF4\u4E86\u4E00\u534A\u300D", next: "ch1_022b", effects: { affection_marcus: 1 } }
+  ]
+};
+DIALOGUES.ch1_022a = {
+  id: "ch1_022a",
+  speaker: "marcus",
+  text: "\uFF08\u9524\u5B50\u72E0\u72E0\u7838\u5728\u94C1\u4E0A\uFF0C\u706B\u661F\u56DB\u6E85\u3002\uFF09\n\u4ED6\u5C31\u77E5\u9053\u7528\u8FD9\u62DB\u3002"
+};
+DIALOGUES.ch1_022b = {
+  id: "ch1_022b",
+  speaker: "marcus",
+  text: "\u56E0\u4E3A\u4ED6\u8BF4\u4E0D\u51FA\u53E6\u4E00\u534A\u3002\u53E6\u4E00\u534A\u592A\u96BE\u542C\u4E86\u3002"
+};
+DIALOGUES.ch1_023 = {
+  id: "ch1_023",
+  speaker: "marcus",
+  text: "\u542C\u597D\u3002\u9635\u5217\u4E0D\u9700\u8981\u4FEE\u590D\u2014\u2014\u5B83\u9700\u8981\u88AB\u6467\u6BC1\u3002"
+};
+DIALOGUES.ch1_024 = {
+  id: "ch1_024",
+  speaker: "marcus",
+  text: "\u8FD9\u4E1C\u897F\u672C\u6765\u5C31\u662F\u9519\u7684\u3002\u516D\u767E\u5E74\u524D\u90A3\u4E2A\u661F\u9009\u8005\u7528\u81EA\u5DF1\u7684\u547D\u628A\u5B83\u7ACB\u8D77\u6765\uFF0C\u6362\u6765\u4E86\u516D\u767E\u5E74\u7684\u300C\u592A\u5E73\u300D\u3002\n\u4F46\u4EE3\u4EF7\u5462\uFF1F\u8FD9\u4E2A\u6751\u5B50\u5728\u6162\u6162\u6B7B\u53BB\u3002\u5E74\u8F7B\u4EBA\u90FD\u8D70\u4E86\u3002\u5E84\u7A3C\u4E0D\u957F\u4E86\u3002\u661F\u8FB0\u8D8A\u6765\u8D8A\u6697\u3002\n\u4FEE\u590D\u5C31\u662F\u518D\u627E\u4E00\u4E2A\u4EBA\u6765\u727A\u7272\u3002",
+  choices: [
+    { text: "\u300C\u6467\u6BC1\u4E86\u4F1A\u600E\u6837\uFF1F\u300D", next: "ch1_025a", effects: { star_understanding: 1 } },
+    { text: "\u300C\u90A3\u5927\u5BB6\u5C31\u80FD\u79BB\u5F00\u4E86\uFF1F\u300D", next: "ch1_025b", effects: { affection_marcus: 1 } }
+  ]
+};
+DIALOGUES.ch1_025a = {
+  id: "ch1_025a",
+  speaker: "marcus",
+  text: "\u661F\u8FB0\u4F1A\u5F7B\u5E95\u5760\u843D\u3002\u50CF\u4E00\u4E2A\u73BB\u7483\u676F\u7838\u5728\u5730\u4E0A\u3002\u4F46\u2014\u2014\u6240\u6709\u4EBA\u90FD\u80FD\u8D70\u3002\u4E0D\u518D\u6709\u4EBA\u88AB\u300C\u9009\u300D\u4E2D\u3002\u4E0D\u518D\u6709\u4EBA\u9700\u8981\u732E\u796D\u3002"
+};
+DIALOGUES.ch1_025b = {
+  id: "ch1_025b",
+  speaker: "marcus",
+  text: "\u5BF9\u3002\u6240\u6709\u4EBA\u3002\u5305\u62EC\u6211\u3002\u6211\u7237\u7237\u662F\u94C1\u5320\u3002\u6211\u7238\u662F\u94C1\u5320\u3002\u6211\u662F\u94C1\u5320\u3002\u6211\u4E0D\u6253\u7B97\u518D\u8BA9\u6211\u7684\u513F\u5B50\u4E5F\u5F53\u94C1\u5320\u4E86\u3002"
+};
+DIALOGUES.ch1_026 = {
+  id: "ch1_026",
+  speaker: "marcus",
+  text: "\u6211\u9700\u8981\u4EBA\u5E2E\u5FD9\u3002\u9635\u5217\u7684\u6838\u5FC3\u5728\u5730\u4E0B\u2014\u2014\u661F\u8BED\u5185\u6BBF\u3002\u5165\u53E3\u88AB\u7B26\u6587\u9501\u4F4F\u4E86\u3002\n\u51EF\u5C14\u6709\u94A5\u5319\u3002\u8389\u62C9\u6709\u529E\u6CD5\u7ED5\u8FC7\u5B83\u3002\u6211\u53EA\u6709\u8FD9\u628A\u9524\u5B50\u3002",
+  choices: [
+    { text: "\u300C\u4F60\u60F3\u8981\u6211\u5E2E\u4F60\u5077\u94A5\u5319\uFF1F\u300D", next: "ch1_027a", effects: { affection_marcus: 1, village_trust: -1 } },
+    { text: "\u300C\u4F60\u60F3\u8BA9\u6211\u7AD9\u5728\u4F60\u8FD9\u8FB9\uFF1F\u300D", next: "ch1_027b" }
+  ]
+};
+DIALOGUES.ch1_027a = {
+  id: "ch1_027a",
+  speaker: "marcus",
+  text: "\uFF08\u4ED6\u7B11\u4E86\u4E00\u4E0B\u2014\u2014\u4E00\u79CD\u5F88\u82E6\u7684\u7B11\u3002\uFF09\n\u4E0D\u3002\u6211\u53EA\u60F3\u4F60\u5E2E\u6211\u60F3\u6E05\u695A\u3002\u522B\u6025\u7740\u7AD9\u961F\u3002\u5148\u770B\u6E05\u695A\u518D\u9009\u3002"
+};
+DIALOGUES.ch1_027b = {
+  id: "ch1_027b",
+  speaker: "marcus",
+  text: "\u4E0D\u662F\u7AD9\u5728\u6211\u8FD9\u8FB9\u3002\u662F\u7AD9\u5728\u4F60\u81EA\u5DF1\u90A3\u8FB9\u3002\n\u4F60\u60F3\u60F3\u2014\u2014\u4F60\u60F3\u6210\u4E3A\u4E0B\u4E00\u4E2A\u57CB\u5728\u77F3\u7891\u4E0B\u9762\u7684\u4EBA\u5417\uFF1F"
+};
+DIALOGUES.ch1_028 = {
+  id: "ch1_028",
+  speaker: "narrator",
+  text: "\u5929\u5FEB\u9ED1\u4E86\u3002\u4F60\u8D70\u5411\u5360\u661F\u5854\u3002\n\u5854\u9876\u7684\u7A97\u53E3\u4EAE\u7740\u4E00\u76CF\u706F\u3002",
+  scene: "scene_tower"
+};
+DIALOGUES.ch1_029 = {
+  id: "ch1_029",
+  speaker: "lyra",
+  text: "\u4F60\u6765\u4E86\u3002\u6BD4\u6211\u60F3\u7684\u665A\u4E00\u70B9\u2014\u2014\u4F46\u6211\u4EE5\u4E3A\u4F60\u4E0D\u4F1A\u6765\u3002"
+};
+DIALOGUES.ch1_030 = {
+  id: "ch1_030",
+  speaker: "lyra",
+  text: "\u89C1\u8FC7\u51EF\u5C14\u548C\u9A6C\u5E93\u65AF\u4E86\uFF1F",
+  choices: [
+    { text: "\u300C\u90FD\u89C1\u8FC7\u4E86\u300D", next: "ch1_031a" },
+    { text: "\u300C\u53EA\u89C1\u4E86\u51EF\u5C14\u300D", next: "ch1_031b" },
+    { text: "\u300C\u4F60\u600E\u4E48\u77E5\u9053\uFF1F\u300D", next: "ch1_031c", effects: { affection_lyra: 1 } }
+  ]
+};
+DIALOGUES.ch1_031a = {
+  id: "ch1_031a",
+  speaker: "lyra",
+  text: "\u6548\u7387\u633A\u9AD8\u3002\u90A3\u6211\u5C11\u8BF4\u70B9\u5E9F\u8BDD\u3002\n\u51EF\u5C14\u8981\u4F60\u4FEE\u590D\u9635\u5217\u3002\u9A6C\u5E93\u65AF\u8981\u4F60\u6467\u6BC1\u9635\u5217\u3002"
+};
+DIALOGUES.ch1_031b = {
+  id: "ch1_031b",
+  speaker: "lyra",
+  text: "\u90A3\u4F60\u8FD8\u6CA1\u542C\u5230\u6700\u96BE\u542C\u7684\u90E8\u5206\u3002\n\u51EF\u5C14\u8981\u4F60\u732E\u796D\u3002\u9A6C\u5E93\u65AF\u8981\u4F60\u6BC1\u706D\u3002"
+};
+DIALOGUES.ch1_031c = {
+  id: "ch1_031c",
+  speaker: "lyra",
+  text: "\u6211\u731C\u7684\u3002\u4E09\u4E2A\u9009\u62E9\u2014\u2014\u51EF\u5C14\u3001\u9A6C\u5E93\u65AF\u3001\u6211\u2014\u2014\u5927\u591A\u6570\u4EBA\u4F1A\u5148\u89C1\u524D\u4E24\u4E2A\uFF0C\u628A\u6700\u96BE\u7684\u90A3\u4E2A\u7559\u5230\u6700\u540E\u3002"
+};
+DIALOGUES.ch1_032 = {
+  id: "ch1_032",
+  speaker: "lyra",
+  text: "\u4ED6\u4EEC\u4FE9\u90FD\u53EA\u7ED9\u4F60\u4E24\u79CD\u9009\u62E9\uFF1A\u4FEE\u6216\u8005\u6BC1\u3002\u732E\u796D\u6216\u8005\u9003\u8DD1\u3002\n\u4F46\u8FD9\u4E2A\u4E16\u754C\u4E0D\u662F\u4E8C\u5143\u7684\u3002"
+};
+DIALOGUES.ch1_033 = {
+  id: "ch1_033",
+  speaker: "lyra",
+  text: "\u9635\u5217\u7684\u672C\u8D28\u2014\u2014\u662F\u661F\u8FB0\u80FD\u91CF\u7684\u8F6C\u6362\u5668\u3002\u628A\u661F\u8FB0\u4E4B\u529B\u8F6C\u5316\u4E3A\u4E00\u79CD\u2026\u2026\u56FA\u5B9A\u7684\u5F62\u6001\u3002\n\u4F46\u5B83\u4E0D\u4E00\u5B9A\u975E\u8981\u300C\u56FA\u5B9A\u300D\u5929\u7A7A\u3002\u5B83\u53EF\u4EE5\u505A\u522B\u7684\u4E8B\u3002",
+  choices: [
+    { text: "\u300C\u6BD4\u5982\uFF1F\u300D", next: "ch1_034a", effects: { star_understanding: 1 } },
+    { text: "\u300C\u4F60\u8BF4\u7684\u7B2C\u4E09\u79CD\u529E\u6CD5\u5C31\u662F\u8FD9\u4E2A\uFF1F\u300D", next: "ch1_034b", effects: { affection_lyra: 1 } }
+  ]
+};
+DIALOGUES.ch1_034a = {
+  id: "ch1_034a",
+  speaker: "lyra",
+  text: "\u6BD4\u5982\u2014\u2014\u5EFA\u7ACB\u65B0\u7684\u5951\u7EA6\u3002\u661F\u8FB0\u4E0D\u9700\u8981\u88AB\u56FA\u5B9A\u5728\u65E7\u8F68\u9053\u4E0A\u3002\u5B83\u4EEC\u53EA\u662F\u9700\u8981\u4E00\u4E2A\u65B0\u7684\u300C\u7EA6\u5B9A\u300D\u3002\n\u4E0D\u662F\u4FEE\u590D\u3002\u4E0D\u662F\u6BC1\u706D\u3002\u91CD\u65B0\u8C08\u5224\u3002"
+};
+DIALOGUES.ch1_034b = {
+  id: "ch1_034b",
+  speaker: "lyra",
+  text: "\u5BF9\u3002\u9635\u5217\u4E0D\u9700\u8981\u951A\u2014\u2014\u5B83\u9700\u8981\u4E00\u4E2A\u65B0\u7684\u534F\u8BAE\u3002\u8BA9\u661F\u8FB0\u81EA\u5DF1\u9009\u62E9\u5B83\u4EEC\u7684\u8F68\u9053\u3002\n\u8FD9\u4E0D\u662F\u63A7\u5236\u3002\u8FD9\u662F\u2026\u2026\u5BF9\u8BDD\u3002"
+};
+DIALOGUES.ch1_035 = {
+  id: "ch1_035",
+  speaker: "lyra",
+  text: "\u4F46\u8FD9\u4EF6\u4E8B\u9700\u8981\u4E09\u4E2A\u4EBA\u3002\u4E0D\u662F\u4E00\u4E2A\u4EBA\u2014\u2014\u662F\u4E09\u4E2A\u7AD9\u5728\u4E0D\u540C\u4F4D\u7F6E\u7684\u4EBA\uFF0C\u540C\u65F6\u542F\u52A8\u9635\u5217\u7684\u4E09\u4E2A\u8282\u70B9\u3002\n\u6211\u4E00\u4E2A\u4EBA\u505A\u4E0D\u5230\u3002",
+  choices: [
+    { text: "\u300C\u4F60\u60F3\u8BA9\u6211\u5E2E\u4F60\u8BF4\u670D\u53E6\u5916\u4E24\u4E2A\u4EBA\uFF1F\u300D", next: "ch1_036a", effects: { affection_lyra: 2 } },
+    { text: "\u300C\u4E3A\u4EC0\u4E48\u975E\u8981\u4E09\u4E2A\u4EBA\uFF1F\u300D", next: "ch1_036b" },
+    { text: "\u300C\u4F60\u5728\u5229\u7528\u6211\u3002\u300D", next: "ch1_036c", effects: { affection_lyra: -2, village_trust: -1 } }
+  ]
+};
+DIALOGUES.ch1_036a = {
+  id: "ch1_036a",
+  speaker: "lyra",
+  text: "\uFF08\u5979\u770B\u7740\u4F60\uFF0C\u76EE\u5149\u91CC\u6709\u67D0\u79CD\u63A5\u8FD1\u6E29\u5EA6\u7684\u4E1C\u897F\u3002\uFF09\n\u6211\u6CA1\u6CD5\u8BF4\u670D\u4ED6\u4EEC\u3002\u4ED6\u4EEC\u4E0D\u4FE1\u6211\u3002\u4F46\u4ED6\u4EEC\u53EF\u80FD\u2014\u2014\u4F1A\u4FE1\u4F60\u3002"
+};
+DIALOGUES.ch1_036b = {
+  id: "ch1_036b",
+  speaker: "lyra",
+  text: "\u9635\u5217\u7684\u4E09\u4E2A\u8282\u70B9\u5206\u522B\u5BF9\u5E94\u2014\u2014\u5929\u3001\u5730\u3001\u4EBA\u3002\u4E00\u4E2A\u4EBA\u53EA\u80FD\u5360\u4E00\u4E2A\u4F4D\u7F6E\u3002\n\u516D\u767E\u5E74\u524D\u7684\u661F\u9009\u8005\u662F\u4E00\u4E2A\u4EBA\u5F3A\u884C\u7AD9\u4E86\u4E09\u4E2A\u4F4D\u7F6E\u2014\u2014\u6240\u4EE5\u4ED6\u6B7B\u4E86\u3002"
+};
+DIALOGUES.ch1_036c = {
+  id: "ch1_036c",
+  speaker: "lyra",
+  text: "\uFF08\u5979\u6C89\u9ED8\u4E86\u5F88\u4E45\u3002\u7136\u540E\u8F7B\u8F7B\u8BF4\u4E86\u4E00\u53E5\u3002\uFF09\n\u5BF9\u3002\u6211\u5728\u5229\u7528\u4F60\u3002\u5C31\u50CF\u51EF\u5C14\u548C\u9A6C\u5E93\u65AF\u4E5F\u5728\u5229\u7528\u4F60\u4E00\u6837\u3002\n\u533A\u522B\u662F\u2014\u2014\u6211\u544A\u8BC9\u4F60\u4E86\u3002"
+};
+DIALOGUES.ch1_037 = {
+  id: "ch1_037",
+  speaker: "narrator",
+  text: "\u4F60\u79BB\u5F00\u4E86\u5360\u661F\u5854\u3002\u591C\u8272\u5DF2\u6DF1\u3002\n\u5728\u5E7F\u573A\u4E0A\uFF0C\u4F60\u770B\u5230\u4E86\u4E00\u4E2A\u4F60\u6CA1\u60F3\u5230\u7684\u573A\u666F\uFF1A\u51EF\u5C14\u3001\u9A6C\u5E93\u65AF\u548C\u8389\u62C9\u2014\u2014\u4E09\u4E2A\u4EBA\u540C\u65F6\u7AD9\u5728\u90A3\u91CC\u3002",
+  scene: "scene_square"
+};
+DIALOGUES.ch1_038 = {
+  id: "ch1_038",
+  speaker: "narrator",
+  text: "\u6CA1\u6709\u4EBA\u8BF4\u8BDD\u3002\u7A7A\u6C14\u50CF\u4E00\u6839\u7EF7\u7D27\u7684\u5F26\u3002"
+};
+DIALOGUES.ch1_039 = {
+  id: "ch1_039",
+  speaker: "kael",
+  text: "\u5979\u5728\u8DDF\u4F60\u8BF4\u7B2C\u4E09\u79CD\u65B9\u6848\u4E86\uFF0C\u5BF9\u5427\uFF1F"
+};
+DIALOGUES.ch1_040 = {
+  id: "ch1_040",
+  speaker: "marcus",
+  text: "\u90A3\u65B9\u6848\u884C\u4E0D\u901A\u3002\u4F60\u77E5\u9053\u884C\u4E0D\u901A\u3002",
+  choices: [
+    { text: "\u300C\u4E5F\u8BB8\u53EF\u4EE5\u8BD5\u8BD5\u300D", next: "ch1_041a" },
+    { text: "\u300C\u81F3\u5C11\u6BD4\u8BA9\u4EBA\u53BB\u6B7B\u597D\u300D", next: "ch1_041b", effects: { affection_lyra: 1 } },
+    { text: "\uFF08\u7B49\u4ED6\u4EEC\u5435\u5B8C\uFF09", next: "ch1_041c", effects: { village_trust: 1 } }
+  ]
+};
+DIALOGUES.ch1_041a = {
+  id: "ch1_041a",
+  speaker: "marcus",
+  text: "\u8BD5\u8BD5\uFF1F\u4F60\u77E5\u9053\u8BD5\u7684\u4EE3\u4EF7\u662F\u4EC0\u4E48\uFF1F\u5982\u679C\u5979\u9519\u4E86\u2014\u2014\u4E0D\u662F\u5979\u6B7B\u3002\u662F\u6240\u6709\u4EBA\u3002"
+};
+DIALOGUES.ch1_041b = {
+  id: "ch1_041b",
+  speaker: "kael",
+  text: "\u4F60\u4EE5\u4E3A\u6211\u5728\u8BA9\u4EBA\u53BB\u6B7B\uFF1F\u6211\u5728\u4FDD\u62A4\u4ED6\u4EEC\uFF01\u4F60\u4EE5\u4E3A\u6211\u60F3\u8BA9\u4E9A\u745F\u2026\u2026"
+};
+DIALOGUES.ch1_041c = {
+  id: "ch1_041c",
+  speaker: "lyra",
+  text: "\uFF08\u5979\u770B\u7740\u4F60\u3002\u6CA1\u8BF4\u8BDD\u3002\u4F46\u4F60\u611F\u89C9\u5230\u5979\u5E0C\u671B\u4F60\u8BF4\u70B9\u4EC0\u4E48\u3002\uFF09"
+};
+DIALOGUES.ch1_042 = {
+  id: "ch1_042",
+  speaker: "lyra",
+  text: "\u591F\u4E86\u3002\u8BA9ta\u9009\u3002"
+};
+DIALOGUES.ch1_043 = {
+  id: "ch1_043",
+  speaker: "lyra",
+  text: "\u4F60\u542C\u4E86\u6211\u4EEC\u4E09\u4E2A\u4EBA\u7684\u8BDD\u3002\u73B0\u5728\u2014\u2014\u4F60\u9009\u8C01\uFF1F"
+};
+DIALOGUES.ch1_044 = {
+  id: "ch1_044",
+  speaker: "narrator",
+  text: "\u4E09\u4E2A\u4EBA\u90FD\u770B\u7740\u4F60\u3002\n\u5934\u9876\u7684\u661F\u7FA4\u5728\u7F13\u6162\u5730\u65CB\u8F6C\u2014\u2014\u50CF\u4E00\u53EA\u5DE8\u5927\u7684\u773C\u775B\u6B63\u5728\u7741\u5F00\u3002",
+  choices: [
+    { text: "\u2726\u300C\u6211\u9009\u51EF\u5C14\u3002\u9635\u5217\u9700\u8981\u4FEE\u590D\u3002\u300D", next: "ch1_045a", effects: { sided_with: "kael", affection_kael: 3, affection_marcus: -2, affection_lyra: -1 } },
+    { text: "\u2726\u300C\u6211\u9009\u9A6C\u5E93\u65AF\u3002\u9635\u5217\u5FC5\u987B\u6467\u6BC1\u3002\u300D", next: "ch1_045b", effects: { sided_with: "marcus", affection_marcus: 3, affection_kael: -2, affection_lyra: -1 } },
+    { text: "\u2726\u300C\u6211\u9009\u8389\u62C9\u3002\u6211\u4EEC\u8BD5\u8BD5\u7B2C\u4E09\u79CD\u65B9\u6848\u3002\u300D", next: "ch1_045c", effects: { sided_with: "lyra", affection_lyra: 3, affection_kael: -2, affection_marcus: -1 } },
+    { text: "\u300C\u6211\u8C01\u90FD\u4E0D\u9009\u3002\u8FD9\u4E0D\u5173\u6211\u7684\u4E8B\u3002\u300D", next: "ch1_045d", effects: { sided_with: "none", village_trust: -2, affection_kael: -2, affection_marcus: -2, affection_lyra: -2 } }
+  ]
+};
+DIALOGUES.ch1_045a = {
+  id: "ch1_045a",
+  speaker: "kael",
+  text: "\uFF08\u4ED6\u95ED\u4E0A\u773C\u775B\uFF0C\u957F\u957F\u5730\u547C\u51FA\u4E00\u53E3\u6C14\u3002\u4EFF\u4F5B\u7B49\u4E86\u516D\u5341\u5E74\u624D\u7B49\u5230\u8FD9\u53E5\u8BDD\u3002\uFF09\n\u8C22\u8C22\u4F60\u3002\u6211\u4E0D\u4F1A\u8BA9\u4F60\u540E\u6094\u7684\u3002"
+};
+DIALOGUES.ch1_045b = {
+  id: "ch1_045b",
+  speaker: "marcus",
+  text: "\uFF08\u4ED6\u628A\u9524\u5B50\u91CD\u91CD\u6401\u5728\u5730\u4E0A\u3002\uFF09\n\u597D\u3002\u5C31\u8FD9\u4E48\u529E\u3002\u660E\u65E9\u6211\u53BB\u9635\u5217\u5165\u53E3\u7B49\u4F60\u3002"
+};
+DIALOGUES.ch1_045c = {
+  id: "ch1_045c",
+  speaker: "lyra",
+  text: "\uFF08\u5979\u7684\u5634\u89D2\u5FAE\u5FAE\u52A8\u4E86\u4E00\u4E0B\u3002\u4E0D\u662F\u7B11\uFF0C\u4F46\u63A5\u8FD1\u3002\uFF09\n\u597D\u3002\u4F60\u9700\u8981\u77E5\u9053\u7684\u4E1C\u897F\u2014\u2014\u90FD\u5728\u8FD9\u91CC\u4E86\u3002"
+};
+DIALOGUES.ch1_045d = {
+  id: "ch1_045d",
+  speaker: "narrator",
+  text: "\u4E09\u4E2A\u4EBA\u90FD\u6C89\u9ED8\u4E86\u3002\u8389\u62C9\u8F6C\u8EAB\u8D70\u4E86\u3002\u9A6C\u5E93\u65AF\u56DE\u4E86\u94C1\u5320\u94FA\u3002\u51EF\u5C14\u7AD9\u4E86\u4E00\u4F1A\u513F\uFF0C\u4E5F\u56DE\u5230\u4E86\u77F3\u7891\u65C1\u3002\n\u4F60\u4E00\u4E2A\u4EBA\u7559\u5728\u5E7F\u573A\u4E0A\u3002\u661F\u661F\u5728\u5934\u9876\u7EE7\u7EED\u79FB\u52A8\u3002"
+};
+DIALOGUES.ch1_046 = {
+  id: "ch1_046",
+  speaker: "narrator",
+  text: "\u4F46\u5C31\u5728\u4F60\u4EE5\u4E3A\u8FD9\u4E2A\u591C\u665A\u5C31\u8FD9\u6837\u7ED3\u675F\u65F6\u2014\u2014\n\u4E00\u58F0\u4F4E\u6C89\u7684\u8F70\u9E23\u4ECE\u5730\u4E0B\u6D8C\u4E0A\u6765\u3002\u811A\u4E0B\u7684\u77F3\u677F\u5728\u9707\u52A8\u3002",
+  scene: "scene_square"
+};
+DIALOGUES.ch1_047 = {
+  id: "ch1_047",
+  speaker: "narrator",
+  text: "\u5E7F\u573A\u4E2D\u592E\u7684\u9ED1\u8272\u77F3\u7891\u2014\u2014\u88C2\u5F00\u4E86\u3002\n\u4E00\u9053\u5149\u4ECE\u88C2\u7F1D\u4E2D\u5C04\u51FA\u3002\u4E0D\u662F\u9633\u5149\u2014\u2014\u662F\u661F\u8FB0\u7684\u5149\u3002\u51B7\u800C\u70C8\u3002"
+};
+DIALOGUES.ch1_048 = {
+  id: "ch1_048",
+  speaker: "kael",
+  text: "\u4E0D\u2026\u2026\u8FD8\u4E0D\u5230\u65F6\u5019\u2026\u2026"
+};
+DIALOGUES.ch1_049 = {
+  id: "ch1_049",
+  speaker: "narrator",
+  text: "\u51EF\u5C14\u51B2\u5411\u77F3\u7891\u3002\u4F46\u6709\u4EBA\u6BD4\u4ED6\u66F4\u5FEB\u3002",
+  choices: [
+    { text: "\u300C\u8DDF\u4E0A\u8389\u62C9\u300D", next: "ch1_050a", effects: { affection_lyra: 2, star_understanding: 1 } },
+    { text: "\u300C\u5148\u53BB\u6276\u51EF\u5C14\u300D", next: "ch1_050b", effects: { affection_kael: 2 } }
+  ]
+};
+DIALOGUES.ch1_049_alt = {
+  id: "ch1_049_alt",
+  speaker: "narrator",
+  text: "\u51EF\u5C14\u51B2\u5411\u77F3\u7891\u3002\u4ED6\u7684\u8EAB\u4F53\u649E\u5728\u77F3\u7891\u4E0A\u2014\u2014\u7136\u540E\u88AB\u5F39\u5F00\u3002\n\u5149\u66F4\u5F3A\u4E86\u3002",
+  condition: 'affection_lyra < 5 && sided_with !== "lyra"',
+  choices: [
+    { text: "\u300C\u53BB\u6276\u51EF\u5C14\u300D", next: "ch1_050b", effects: { affection_kael: 2 } },
+    { text: "\u300C\u51B2\u5411\u77F3\u7891\u770B\u4E2A\u7A76\u7ADF\u300D", next: "ch1_050c", effects: { star_understanding: 1, village_trust: 1 } }
+  ]
+};
+DIALOGUES.ch1_050a = {
+  id: "ch1_050a",
+  speaker: "narrator",
+  text: "\u4F60\u8DDF\u4E0A\u4E86\u8389\u62C9\u3002\u5979\u8DD1\u5411\u5360\u661F\u5854\u2014\u2014\u4E0D\u662F\u5411\u4E0A\uFF0C\u800C\u662F\u7ED5\u5230\u5854\u5E95\uFF0C\u6380\u5F00\u4E00\u5757\u5730\u7816\uFF0C\u9732\u51FA\u4E00\u4E2A\u5411\u4E0B\u7684\u5165\u53E3\u3002\n\u300C\u8FD9\u8FB9\u3002\u77F3\u7891\u7684\u6839\u5728\u5854\u4E0B\u9762\u3002\u300D",
+  effects: { truth_revealed: true }
+};
+DIALOGUES.ch1_050b = {
+  id: "ch1_050b",
+  speaker: "kael",
+  text: "\uFF08\u4F60\u6276\u4F4F\u51EF\u5C14\u3002\u4ED6\u7684\u624B\u81C2\u5728\u53D1\u6296\u2014\u2014\u4E0D\u662F\u56E0\u4E3A\u6050\u60E7\uFF0C\u662F\u56E0\u4E3A\u67D0\u79CD\u5F3A\u70C8\u7684\u2026\u2026\u5171\u9E23\uFF1F\uFF09\n\u300C\u2026\u2026\u4E9A\u745F\u3002\u4ED6\u5728\u53EB\u6211\u3002\u300D"
+};
+DIALOGUES.ch1_050c = {
+  id: "ch1_050c",
+  speaker: "narrator",
+  text: "\u4F60\u51B2\u5411\u77F3\u7891\u3002\u5149\u8D8A\u6765\u8D8A\u5F3A\u2014\u2014\u7136\u540E\u4F60\u770B\u89C1\u4E86\u2014\u2014\n\u77F3\u7891\u6DF1\u5904\uFF0C\u6709\u4E00\u4E2A\u4EBA\u5F71\u3002\u95ED\u7740\u773C\u775B\u3002\u50CF\u5728\u6C34\u5E95\u6C89\u7761\u4E86\u5F88\u4E45\u7684\u4EBA\u3002",
+  effects: { truth_revealed: true, knew_previous: true }
+};
+DIALOGUES.ch1_051 = {
+  id: "ch1_051",
+  speaker: "narrator",
+  text: "\u5149\u7F13\u7F13\u6D88\u6563\u3002\u77F3\u7891\u6062\u590D\u4E86\u539F\u72B6\u2014\u2014\u4F46\u88C2\u7F1D\u8FD8\u5728\u3002\n\u5E7F\u573A\u4E0A\u805A\u96C6\u4E86\u6751\u6C11\u3002\u4ED6\u4EEC\u6C89\u9ED8\u5730\u7AD9\u7740\uFF0C\u50CF\u6628\u591C\u4E00\u6837\u3002"
+};
+DIALOGUES.ch1_052 = {
+  id: "ch1_052",
+  speaker: "kael",
+  text: "\u9635\u5217\u6491\u4E0D\u4F4F\u4E86\u3002\u6211\u4EEC\u4EE5\u4E3A\u8FD8\u6709\u4E03\u5929\u2014\u2014\u4F46\u5B9E\u9645\u4E0A\u2026\u2026"
+};
+DIALOGUES.ch1_052b = {
+  id: "ch1_052b",
+  speaker: "marcus",
+  text: "\u6700\u591A\u4E09\u5929\u3002\u4E09\u5929\u4E4B\u540E\uFF0C\u8981\u4E48\u9635\u5217\u5D29\uFF0C\u8981\u4E48\u65B0\u951A\u88AB\u9009\u4E2D\u3002",
+  condition: "knew_previous !== true"
+};
+DIALOGUES.ch1_053 = {
+  id: "ch1_053",
+  speaker: "narrator",
+  text: "\u6751\u6C11\u4EEC\u6563\u4E86\u3002\u5E7F\u573A\u4E0A\u53EA\u5269\u4E0B\u4F60\u3001\u51EF\u5C14\u3001\u9A6C\u5E93\u65AF\u2026\u2026\u548C\u8FDC\u5904\u5854\u9876\u7684\u8389\u62C9\u3002",
+  scene: "scene_square"
+};
+DIALOGUES.ch1_054 = {
+  id: "ch1_054",
+  speaker: "narrator",
+  text: "\u4E09\u5929\u3002\n\u4F60\u8FD8\u6709\u4E09\u5929\u65F6\u95F4\u3002\u4FEE\u590D\u9635\u5217\u3002\u6467\u6BC1\u9635\u5217\u3002\u6216\u8005\u627E\u5230\u90A3\u4E2A\u6CA1\u4EBA\u8BD5\u8FC7\u7684\u7B2C\u4E09\u79CD\u529E\u6CD5\u3002"
+};
+DIALOGUES.ch1_055 = {
+  id: "ch1_055",
+  speaker: "narrator",
+  text: "\u660E\u5929\u4E00\u65E9\uFF0C\u4F60\u8981\u53BB\u9635\u5217\u5165\u53E3\u3002\u4E0D\u7BA1\u9009\u4E86\u4EC0\u4E48\u2014\u2014\u5230\u4E86\u90A3\u91CC\uFF0C\u5C31\u6CA1\u6709\u56DE\u5934\u8DEF\u4E86\u3002"
+};
+DIALOGUES.ch1_055a = {
+  id: "ch1_055a",
+  speaker: "kael",
+  text: "\u5929\u4EAE\u524D\u6765\u53E4\u6811\u627E\u6211\u3002\u6211\u5E26\u4F60\u53BB\u9635\u5217\u5165\u53E3\u3002",
+  condition: "sided_with === 'kael'"
+};
+DIALOGUES.ch1_055b = {
+  id: "ch1_055b",
+  speaker: "marcus",
+  text: "\u5929\u4EAE\u524D\u5230\u94C1\u5320\u94FA\u6765\u3002\u6211\u6709\u4E1C\u897F\u8981\u7ED9\u4F60\u3002",
+  condition: "sided_with === 'marcus'"
+};
+DIALOGUES.ch1_055c = {
+  id: "ch1_055c",
+  speaker: "lyra",
+  text: "\u5929\u4EAE\u524D\u6765\u5854\u5E95\u3002\u6211\u4EEC\u8D70\u90A3\u6761\u4E0D\u4E3A\u4EBA\u77E5\u7684\u8DEF\u3002",
+  condition: "sided_with === 'lyra'"
+};
+DIALOGUES.ch1_056 = {
+  id: "ch1_056",
+  speaker: "narrator",
+  text: "\u3010\u7B2C\u4E00\u7AE0\xB7\u5B8C\u3011\n\n\u661F\u8FB0\u5728\u5934\u9876\u7EE7\u7EED\u504F\u79BB\u8F68\u9053\u3002\n\u4E09\u5929\u7684\u5012\u8BA1\u65F6\u5DF2\u7ECF\u5F00\u59CB\u3002",
+  effects: { chapter1_complete: true }
+};
+var dialogues_default = DIALOGUES;
+
+// main.js
+var ROOT = document.getElementById("game-root") || document.body;
+function mount(el, parent) {
+  parent = parent || ROOT;
+  parent.appendChild(el);
+}
+var flags = FlagSystem();
+var sceneManager = SceneManager({ scenes: scenes_default, container: ROOT });
+var saveManager = SaveManager({ flags });
+var engine = DialogueEngine({ flags });
+var dialogueNodes = Object.values(dialogues_default);
+engine.loadDialogue(dialogueNodes);
+var dialogBox = DialogBox({ render: mount, engine, characters: characters_default });
+var choicePanel = ChoicePanel({ render: mount, engine, evaluateCondition: (cond) => flags.evaluateCondition(cond) });
+var hud = HUD({ render: mount, flagSystem: flags, affectionCharacters: [
+  { id: "kael", label: "\u51EF\u5C14" },
+  { id: "marcus", label: "\u9A6C\u5E93\u65AF" },
+  { id: "lyra", label: "\u8389\u62C9" }
+] });
+var menuUI = MenuUI({ render: mount, saveManager, sceneManager });
+function getNextNodeId(currentId) {
+  if (!currentId) return null;
+  const match = currentId.match(/^([a-zA-Z]+\d*_)?(\d+)([a-z]?)$/);
+  if (match) {
+    const prefix = match[1] || "";
+    const num = parseInt(match[2], 10);
+    const suffix = match[3] || "";
+    if (suffix) {
+      const nextSuffix = String.fromCharCode(suffix.charCodeAt(0) + 1);
+      const nextId2 = prefix + num + nextSuffix;
+      if (engine.getNode(nextId2)) return nextId2;
+    }
+    let nextNum = num + 1;
+    let nextId = prefix + nextNum;
+    if (engine.getNode(nextId)) return nextId;
+    const paddedNum = String(num).padStart(match[2].length, "0");
+    const nextPadded = String(nextNum).padStart(match[2].length, "0");
+    nextId = prefix + nextPadded;
+    if (engine.getNode(nextId)) return nextId;
+    const altId = prefix + num + "a2";
+    if (suffix === "a" && engine.getNode(altId)) return altId;
+  }
+  const suffixMatch = currentId.match(/^(.+?)([a-z])$/);
+  if (suffixMatch) {
+    const base = suffixMatch[1];
+    const lastChar = suffixMatch[2];
+    const nextChar = String.fromCharCode(lastChar.charCodeAt(0) + 1);
+    const nextId = base + nextChar;
+    if (engine.getNode(nextId)) return nextId;
+  }
+  return null;
+}
+engine.on("sceneChange", (sceneId) => {
+  const scene = sceneManager.getScene(sceneId);
+  if (scene) {
+    sceneManager.switchScene(sceneId);
+    let chapterName = "";
+    const node = engine.getCurrentNode();
+    if (node) {
+      const id = node.id || "";
+      if (id.startsWith("pro")) chapterName = "\u5E8F\u5E55";
+      else if (id.startsWith("ch1")) chapterName = "\u7B2C\u4E00\u7AE0";
+      else if (id.startsWith("ch2")) chapterName = "\u7B2C\u4E8C\u7AE0";
+      else if (id.startsWith("end")) chapterName = "\u7ED3\u5C40";
+    }
+    hud.setScene(chapterName, scene.name || "");
+    hud.refreshAffections();
+    saveManager.autoSave({
+      currentNodeId: engine.getCurrentNode()?.id || "",
+      sceneId,
+      sceneName: scene.name || "",
+      nodePreview: engine.getCurrentNode()?.text?.slice(0, 20) || ""
+    });
+  }
 });
-
-go("main");
+engine.on("nodeStart", (nodeData) => {
+  choicePanel.hide();
+  if (!dialogBox.showing) {
+    dialogBox.show();
+  }
+});
+engine.on("nodeEnd", (endData) => {
+  const node = engine.getCurrentNode();
+  if (!node) return;
+  if (endData?.clicked) {
+    if (node.choices && node.choices.length > 0) {
+      const available = engine.getAvailableChoices();
+      if (available.length > 0) {
+        choicePanel.show(available);
+      }
+    } else {
+      const nextId = getNextNodeId(node.id);
+      if (nextId) {
+        engine.jump(nextId);
+      } else {
+        console.log(`[Game] \u5267\u60C5\u7EC8\u70B9: ${node.id}`);
+      }
+    }
+    return;
+  }
+  if (node.choices && node.choices.length > 0) {
+    const available = engine.getAvailableChoices();
+    if (available.length > 0 && !endData?.isJump && !endData?.isEnd) {
+      choicePanel.show(available);
+    }
+  }
+});
+engine.on("choice", (choiceData) => {
+  hud.refreshAffections();
+});
+function startGame() {
+  hud.hide();
+  dialogBox.hide();
+  choicePanel.hide();
+  engine.start("pro_001");
+  dialogBox.show();
+  hud.show();
+  saveManager.autoSave({
+    currentNodeId: "pro_001",
+    sceneId: "scene_forest",
+    sceneName: "\u5E7D\u8BED\u68EE\u6797",
+    nodePreview: ""
+  });
+}
+function showTitleScreen() {
+  sceneManager.setScene("scene_field");
+  const titleContainer = document.createElement("div");
+  titleContainer.id = "title-screen";
+  Object.assign(titleContainer.style, {
+    position: "fixed",
+    inset: "0",
+    zIndex: "100",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "radial-gradient(ellipse at center, rgba(10, 14, 26, 0.6) 0%, rgba(10, 14, 26, 0.9) 100%)",
+    cursor: "pointer",
+    userSelect: "none"
+  });
+  const title = document.createElement("h1");
+  title.textContent = "\u661F\u843D\u4E4B\u591C";
+  Object.assign(title.style, {
+    fontSize: "clamp(36px, 8vw, 64px)",
+    fontWeight: "300",
+    fontFamily: "'Crimson Text', 'Noto Serif SC', serif",
+    color: "#e2e8f0",
+    textShadow: "0 0 30px rgba(251, 191, 36, 0.3), 0 0 60px rgba(251, 191, 36, 0.1)",
+    letterSpacing: "12px",
+    marginBottom: "16px",
+    animation: "titlePulse 3s ease-in-out infinite"
+  });
+  const subtitle = document.createElement("p");
+  subtitle.textContent = "\u2014 \u661F\u8FB0\u5931\u5E8F\uFF0C\u9009\u62E9\u91CD\u5199\u547D\u8FD0 \u2014";
+  Object.assign(subtitle.style, {
+    fontSize: "clamp(14px, 2vw, 18px)",
+    color: "#94a3b8",
+    fontFamily: "system-ui, sans-serif",
+    letterSpacing: "4px",
+    marginBottom: "48px"
+  });
+  const startBtn = document.createElement("div");
+  startBtn.textContent = "\u2726 \u70B9\u51FB\u5F00\u59CB \u2726";
+  Object.assign(startBtn.style, {
+    fontSize: "clamp(16px, 2.5vw, 22px)",
+    color: "#fbbf24",
+    fontFamily: "system-ui, sans-serif",
+    letterSpacing: "4px",
+    opacity: "0.7",
+    animation: "startPulse 2s ease-in-out infinite",
+    padding: "12px 32px",
+    border: "1px solid rgba(251, 191, 36, 0.2)",
+    borderRadius: "8px",
+    transition: "all 0.3s ease"
+  });
+  startBtn.addEventListener("mouseenter", () => {
+    startBtn.style.background = "rgba(251, 191, 36, 0.1)";
+    startBtn.style.opacity = "1";
+  });
+  startBtn.addEventListener("mouseleave", () => {
+    startBtn.style.background = "transparent";
+    startBtn.style.opacity = "0.7";
+  });
+  titleContainer.appendChild(title);
+  titleContainer.appendChild(subtitle);
+  titleContainer.appendChild(startBtn);
+  ROOT.appendChild(titleContainer);
+  const style = document.createElement("style");
+  style.textContent = `
+    @keyframes titlePulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.85; } }
+    @keyframes startPulse { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; } }
+    body { -webkit-tap-highlight-color: transparent; }
+  `;
+  ROOT.appendChild(style);
+  const handleStart = () => {
+    titleContainer.style.opacity = "0";
+    titleContainer.style.transition = "opacity 0.6s ease";
+    setTimeout(() => {
+      if (titleContainer.parentNode) titleContainer.parentNode.removeChild(titleContainer);
+      startGame();
+    }, 600);
+  };
+  titleContainer.addEventListener("click", handleStart);
+}
+showTitleScreen();
+export {
+  choicePanel,
+  dialogBox,
+  engine,
+  flags,
+  hud,
+  menuUI,
+  saveManager,
+  sceneManager
+};
 </script>
 </body>
 </html>
