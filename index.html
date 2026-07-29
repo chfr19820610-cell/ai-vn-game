@@ -7,9 +7,138 @@
 <meta name="mobile-web-app-capable" content="yes">
 <title>星落之夜 v2.0</title>
 <style>
+/* ── Reset ── */
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;overflow:hidden;background:#0a0e1a;color:#e2e8f0;font-family:system-ui,-apple-system,sans-serif;touch-action:manipulation}
 #game-root{width:100%;height:100%;position:relative;overflow:hidden}
+
+/* ── CSS Custom Properties + Safe-area defaults ── */
+:root {
+  --sa-t: env(safe-area-inset-top, 0px);
+  --sa-b: env(safe-area-inset-bottom, 0px);
+  --sa-l: env(safe-area-inset-left, 0px);
+  --sa-r: env(safe-area-inset-right, 0px);
+
+  --dialog-maxw: 800px;
+  --choice-maxw: 600px;
+  --hud-maxw: 1200px;
+  --menu-maxw: 440px;
+
+  --spacing-h: 24px;
+  --spacing-v: 16px;
+}
+
+/* ── 3-level breakpoints ── */
+
+/* Mobile < 375px — compact, full-width */
+@media (max-width: 374px) {
+  :root {
+    --dialog-maxw: 100%;
+    --choice-maxw: 100%;
+    --hud-maxw: 100%;
+    --menu-maxw: calc(100vw - 32px);
+    --spacing-h: 12px;
+    --spacing-v: 10px;
+  }
+}
+
+/* 375px — 767px (手机竖屏) */
+@media (min-width: 375px) and (max-width: 767px) {
+  :root {
+    --dialog-maxw: 100%;
+    --choice-maxw: 100%;
+    --hud-maxw: 100%;
+    --menu-maxw: calc(100vw - 40px);
+    --spacing-h: 16px;
+    --spacing-v: 14px;
+  }
+}
+
+/* 768px — 1279px (平板) */
+@media (min-width: 768px) and (max-width: 1279px) {
+  :root {
+    --dialog-maxw: min(720px, 90vw);
+    --choice-maxw: min(560px, 85vw);
+    --hud-maxw: 100%;
+    --menu-maxw: 420px;
+    --spacing-h: 32px;
+    --spacing-v: 16px;
+  }
+}
+
+/* 1280px+ (桌面) */
+@media (min-width: 1280px) {
+  :root {
+    --dialog-maxw: 800px;
+    --choice-maxw: 600px;
+    --hud-maxw: 1200px;
+    --menu-maxw: 440px;
+    --spacing-h: max(4vw, 32px);
+    --spacing-v: 16px;
+  }
+}
+
+/* ── Title screen ── */
+#title-screen {
+  padding: env(safe-area-inset-top, 20px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 20px) env(safe-area-inset-left, 0px);
+}
+
+/* ── DialogBox responsive ── */
+.dialogbox-wrapper {
+  padding-left: max(var(--spacing-h), env(safe-area-inset-left, 16px));
+  padding-right: max(var(--spacing-h), env(safe-area-inset-right, 16px));
+  padding-bottom: max(var(--spacing-v), env(safe-area-inset-bottom, 16px));
+}
+.dialogbox-bubble { max-width: var(--dialog-maxw); }
+
+/* ── ChoicePanel responsive ── */
+.choicepanel-wrapper {
+  padding-left: max(var(--spacing-h), env(safe-area-inset-left, 16px));
+  padding-right: max(var(--spacing-h), env(safe-area-inset-right, 16px));
+  padding-bottom: max(10vh, 80px, env(safe-area-inset-bottom, 16px));
+}
+.choicepanel-container { max-width: var(--choice-maxw); }
+
+/* ── HUD responsive ── */
+.hud-wrapper {
+  padding-left: max(var(--spacing-h), env(safe-area-inset-left, 24px));
+  padding-right: max(var(--spacing-h), env(safe-area-inset-right, 24px));
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.hud-inner { max-width: var(--hud-maxw); margin: 0 auto; }
+
+@media (max-width: 374px) {
+  .hud-chapter { font-size: 10px; }
+  .hud-scene { font-size: 10px; }
+  .hud-dot { width: 8px; height: 8px; }
+}
+
+/* ── MenuUI responsive ── */
+.menu-panel {
+  width: min(var(--menu-maxw), calc(100vw - 32px));
+  max-height: calc(100vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 40px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.menu-toggle-btn {
+  right: max(4vw, 20px, env(safe-area-inset-right, 20px));
+  top: max(6px, env(safe-area-inset-top, 6px));
+}
+
+@media (max-width: 374px) {
+  .menu-panel { padding: 16px; border-radius: 10px; }
+}
+
+/* ── Scrollbar styling (menu panel) ── */
+.menu-panel::-webkit-scrollbar { width: 4px; }
+.menu-panel::-webkit-scrollbar-track { background: transparent; }
+.menu-panel::-webkit-scrollbar-thumb { background: rgba(129,140,248,0.25); border-radius: 2px; }
+
+/* ── DialogText responsive ── */
+@media (max-width: 374px) {
+  .dialogbox-text { font-size: 15px; }
+  .dialogbox-speaker { margin-bottom: 6px; }
+}
 </style>
 </head>
 <body>
@@ -865,8 +994,6 @@ function DialogBox(opts) {
     left: "0",
     right: "0",
     zIndex: "50",
-    padding: "0 max(2vw, 16px) max(2vh, 16px) max(2vw, 16px)",
-    paddingBottom: "max(2vh, 16px, env(safe-area-inset-bottom, 16px))",
     pointerEvents: "auto",
     display: "none",
     opacity: "0",
@@ -875,7 +1002,6 @@ function DialogBox(opts) {
   const bubble = document.createElement("div");
   bubble.className = "dialogbox-bubble";
   Object.assign(bubble.style, {
-    maxWidth: "800px",
     margin: "0 auto",
     background: "rgba(26, 35, 50, 0.85)",
     backdropFilter: "blur(16px)",
@@ -1139,7 +1265,6 @@ function ChoicePanel(opts) {
     left: "0",
     right: "0",
     zIndex: "45",
-    padding: "0 max(2vw, 16px) max(10vh, 80px) max(2vw, 16px)",
     pointerEvents: "none",
     display: "none",
     opacity: "0",
@@ -1148,7 +1273,6 @@ function ChoicePanel(opts) {
   const container = document.createElement("div");
   container.className = "choicepanel-container";
   Object.assign(container.style, {
-    maxWidth: "640px",
     margin: "0 auto",
     display: "flex",
     flexDirection: "column",
@@ -1343,7 +1467,6 @@ function HUD(opts) {
     right: "0",
     zIndex: "60",
     height: "36px",
-    padding: "0 max(4vw, 24px)",
     display: "none",
     opacity: "0",
     transition: "opacity 0.3s ease",
@@ -1353,9 +1476,8 @@ function HUD(opts) {
     borderBottom: "1px solid rgba(129, 140, 248, 0.08)"
   });
   const inner = document.createElement("div");
+  inner.className = "hud-inner";
   Object.assign(inner.style, {
-    maxWidth: "1200px",
-    margin: "0 auto",
     height: "100%",
     display: "flex",
     alignItems: "center",
@@ -1491,8 +1613,6 @@ function MenuUI(opts) {
   toggleBtn.title = "\u83DC\u5355";
   Object.assign(toggleBtn.style, {
     position: "fixed",
-    top: "6px",
-    right: "max(4vw, 20px)",
     zIndex: "70",
     width: "28px",
     height: "28px",
@@ -1544,9 +1664,6 @@ function MenuUI(opts) {
     borderRadius: "14px",
     border: "1px solid rgba(129, 140, 248, 0.15)",
     padding: "24px 28px",
-    minWidth: "320px",
-    maxWidth: "440px",
-    width: "90vw",
     boxShadow: "0 8px 32px rgba(0,0,0,0.4)"
   });
   const contentArea = document.createElement("div");
