@@ -2,11 +2,13 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <title>星落之夜 v2.0</title>
 <style>
-*{margin:0;padding:0;box-sizing:border-box}
-html,body{width:100%;height:100%;overflow:hidden;background:#0a0e1a;color:#e2e8f0;font-family:system-ui,-apple-system,sans-serif}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{width:100%;height:100%;overflow:hidden;background:#0a0e1a;color:#e2e8f0;font-family:system-ui,-apple-system,sans-serif;touch-action:manipulation}
 #game-root{width:100%;height:100%;position:relative;overflow:hidden}
 </style>
 </head>
@@ -864,6 +866,7 @@ function DialogBox(opts) {
     right: "0",
     zIndex: "50",
     padding: "0 max(2vw, 16px) max(2vh, 16px) max(2vw, 16px)",
+    paddingBottom: "max(2vh, 16px, env(safe-area-inset-bottom, 16px))",
     pointerEvents: "auto",
     display: "none",
     opacity: "0",
@@ -1017,7 +1020,10 @@ function DialogBox(opts) {
       currentSpeaker = { id: speakerId, ...char };
       speakerRow.style.display = "flex";
       avatarEl.textContent = char.emoji || "\u2728";
+      avatarEl.style.background = char.color ? `${char.color}22` : "rgba(129, 140, 248, 0.15)";
+      avatarEl.style.borderColor = char.color ? `${char.color}44` : "rgba(129, 140, 248, 0.25)";
       nameEl.textContent = char.name || speakerId;
+      nameEl.style.color = char.color || "#a5b4fc";
       this.setMode("dialogue");
     },
     /**
@@ -1198,6 +1204,18 @@ function ChoicePanel(opts) {
         star.style.transform = "scale(1)";
         star.style.color = "#fbbf24";
       });
+      item.addEventListener("touchstart", () => {
+        item.style.background = "rgba(99, 102, 241, 0.25)";
+        item.style.borderColor = "rgba(99, 102, 241, 0.4)";
+        star.style.transform = "scale(1.3)";
+        star.style.color = "#f59e0b";
+      }, { passive: true });
+      item.addEventListener("touchend", () => {
+        item.style.background = "rgba(26, 35, 50, 0.75)";
+        item.style.borderColor = "rgba(129, 140, 248, 0.2)";
+        star.style.transform = "scale(1)";
+        star.style.color = "#fbbf24";
+      }, { passive: true });
       item.addEventListener("click", () => {
         if (isAnimating) return;
         selectChoice(index);
@@ -2841,6 +2859,14 @@ function showTitleScreen() {
     startBtn.style.background = "transparent";
     startBtn.style.opacity = "0.7";
   });
+  startBtn.addEventListener("touchstart", () => {
+    startBtn.style.background = "rgba(251, 191, 36, 0.15)";
+    startBtn.style.opacity = "1";
+  }, { passive: true });
+  startBtn.addEventListener("touchend", () => {
+    startBtn.style.background = "transparent";
+    startBtn.style.opacity = "0.7";
+  }, { passive: true });
   titleContainer.appendChild(title);
   titleContainer.appendChild(subtitle);
   titleContainer.appendChild(startBtn);
