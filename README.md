@@ -52,6 +52,12 @@ open index.html
 
 ---
 
+## 支持这个项目
+
+这个作品是独立开发者一个人做出来的。如果你喜欢它，欢迎 [在 GitHub 上赞助我](https://github.com/sponsors/chfr19820610-cell) —— 每一杯咖啡的钱，都会变成下一个更好的作品。
+
+---
+
 ## 许可证
 
 Apache License 2.0 — 详见 [LICENSE](LICENSE)
